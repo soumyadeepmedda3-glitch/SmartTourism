@@ -4,6 +4,7 @@ const mysql = require("mysql2/promise");
 require("dotenv").config();
 
 const app = express();
+
 const PORT = process.env.PORT || 5000;
 
 /* =========================================================
@@ -68,7 +69,7 @@ async function connectDatabase() {
 async function fetchWithTimeout(
   url,
   options = {},
-  timeout = 12000
+  timeout = 8000
 ) {
   const controller = new AbortController();
 
@@ -86,16 +87,6 @@ async function fetchWithTimeout(
   } finally {
     clearTimeout(timer);
   }
-}
-
-/* =========================================================
-   SLEEP
-========================================================= */
-
-function sleep(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
 
 /* =========================================================
@@ -134,9 +125,7 @@ function safeNumber(value) {
 
   const number = Number(value);
 
-  return Number.isFinite(number)
-    ? number
-    : null;
+  return Number.isFinite(number) ? number : null;
 }
 
 /* =========================================================
@@ -145,9 +134,7 @@ function safeNumber(value) {
 
 async function geocodeDestination(destination) {
   try {
-    console.log(
-      `🔎 Geocoding destination: ${destination}`
-    );
+    console.log(`🔎 Geocoding destination: ${destination}`);
 
     const url =
       "https://nominatim.openstreetmap.org/search?" +
@@ -167,7 +154,7 @@ async function geocodeDestination(destination) {
           Accept: "application/json",
         },
       },
-      8000
+      7000
     );
 
     if (!response.ok) {
@@ -178,10 +165,7 @@ async function geocodeDestination(destination) {
 
     const data = await response.json();
 
-    if (
-      !Array.isArray(data) ||
-      data.length === 0
-    ) {
+    if (!Array.isArray(data) || data.length === 0) {
       return null;
     }
 
@@ -231,14 +215,11 @@ const OVERPASS_SERVERS = [
    TOURISM QUERY
 ========================================================= */
 
-function buildTourismQuery(
-  latitude,
-  longitude
-) {
+function buildTourismQuery(latitude, longitude) {
   const radius = 15000;
 
   return `
-[out:json][timeout:12];
+[out:json][timeout:10];
 
 (
   nwr["tourism"="attraction"](around:${radius},${latitude},${longitude});
@@ -249,13 +230,9 @@ function buildTourismQuery(
   nwr["tourism"="theme_park"](around:${radius},${latitude},${longitude});
   nwr["tourism"="aquarium"](around:${radius},${latitude},${longitude});
   nwr["tourism"="artwork"](around:${radius},${latitude},${longitude});
-
   nwr["leisure"="park"](around:${radius},${latitude},${longitude});
-
   nwr["historic"](around:${radius},${latitude},${longitude});
-
   nwr["amenity"="place_of_worship"](around:${radius},${latitude},${longitude});
-
   nwr["natural"="beach"](around:${radius},${latitude},${longitude});
   nwr["natural"="water"](around:${radius},${latitude},${longitude});
 );
@@ -268,14 +245,11 @@ out center tags;
    HOTEL QUERY
 ========================================================= */
 
-function buildHotelQuery(
-  latitude,
-  longitude
-) {
+function buildHotelQuery(latitude, longitude) {
   const radius = 20000;
 
   return `
-[out:json][timeout:15];
+[out:json][timeout:10];
 
 (
   nwr["tourism"="hotel"](around:${radius},${latitude},${longitude});
@@ -366,10 +340,7 @@ function getPlaceCategory(tags) {
     return "Historical Place";
   }
 
-  if (
-    tags.amenity ===
-    "place_of_worship"
-  ) {
+  if (tags.amenity === "place_of_worship") {
     return "Religious Place";
   }
 
@@ -385,17 +356,10 @@ function getPlaceCategory(tags) {
 }
 
 /* =========================================================
-   GET PLACE COST FROM OSM
+   OSM PLACE COST
 ========================================================= */
 
 function getOSMPlaceCost(tags) {
-  /*
-    We only use a price if OSM explicitly
-    provides one.
-
-    We NEVER use 0 as a fake price.
-  */
-
   const possiblePrices = [
     tags.fee,
     tags.price,
@@ -403,14 +367,11 @@ function getOSMPlaceCost(tags) {
   ];
 
   for (const value of possiblePrices) {
-    if (!value) {
-      continue;
-    }
+    if (!value) continue;
 
-    const match =
-      String(value).match(
-        /[\d,]+(?:\.\d+)?/
-      );
+    const match = String(value).match(
+      /[\d,]+(?:\.\d+)?/
+    );
 
     if (match) {
       const price = Number(
@@ -439,9 +400,7 @@ function convertOSMPlaces(elements) {
     const coordinates =
       getOSMCoordinates(element);
 
-    if (!coordinates) {
-      continue;
-    }
+    if (!coordinates) continue;
 
     const name =
       tags.name ||
@@ -450,9 +409,7 @@ function convertOSMPlaces(elements) {
       tags.official_name ||
       "";
 
-    if (!cleanText(name)) {
-      continue;
-    }
+    if (!cleanText(name)) continue;
 
     const category =
       getPlaceCategory(tags);
@@ -465,47 +422,33 @@ function convertOSMPlaces(elements) {
       getOSMPlaceCost(tags);
 
     places.push({
-      id:
-        `osm-${element.type}-${element.id}`,
+      id: `osm-${element.type}-${element.id}`,
 
-      name:
-        cleanText(name),
+      name: cleanText(name),
 
       category,
 
-      description:
-        cleanText(description),
+      description: cleanText(description),
 
-      latitude:
-        coordinates.latitude,
+      latitude: coordinates.latitude,
 
-      longitude:
-        coordinates.longitude,
+      longitude: coordinates.longitude,
 
-      /*
-        null means price is not known.
-        NEVER show fake ₹0.
-      */
-      estimated_cost:
-        estimatedCost,
+      estimated_cost: estimatedCost,
 
-      state:
-        cleanText(
-          tags["addr:state"]
-        ),
+      state: cleanText(
+        tags["addr:state"]
+      ),
 
-      source:
-        "OpenStreetMap",
+      source: "OpenStreetMap",
     });
   }
 
-  return removeDuplicatePlaces(
-    places
-  );
+  return removeDuplicatePlaces(places);
 }
 
 /* =========================================================
-   GET HOTEL PRICE
+   HOTEL PRICE
 ========================================================= */
 
 function getOSMHotelPrice(tags) {
@@ -513,18 +456,15 @@ function getOSMHotelPrice(tags) {
     tags.price,
     tags["price:night"],
     tags["charge:night"],
-    tags["charge"],
+    tags.charge,
   ];
 
   for (const value of possiblePrices) {
-    if (!value) {
-      continue;
-    }
+    if (!value) continue;
 
-    const match =
-      String(value).match(
-        /[\d,]+(?:\.\d+)?/
-      );
+    const match = String(value).match(
+      /[\d,]+(?:\.\d+)?/
+    );
 
     if (match) {
       const price = Number(
@@ -553,9 +493,7 @@ function convertOSMHotels(elements) {
     const coordinates =
       getOSMCoordinates(element);
 
-    if (!coordinates) {
-      continue;
-    }
+    if (!coordinates) continue;
 
     const name =
       tags.name ||
@@ -563,31 +501,17 @@ function convertOSMHotels(elements) {
       tags.alt_name ||
       "";
 
-    if (!cleanText(name)) {
-      continue;
-    }
+    if (!cleanText(name)) continue;
 
     let category = "Hotel";
 
-    if (
-      tags.tourism ===
-      "guest_house"
-    ) {
+    if (tags.tourism === "guest_house") {
       category = "Guest House";
-    } else if (
-      tags.tourism ===
-      "hostel"
-    ) {
+    } else if (tags.tourism === "hostel") {
       category = "Hostel";
-    } else if (
-      tags.tourism ===
-      "motel"
-    ) {
+    } else if (tags.tourism === "motel") {
       category = "Motel";
-    } else if (
-      tags.tourism ===
-      "apartment"
-    ) {
+    } else if (tags.tourism === "apartment") {
       category = "Apartment";
     }
 
@@ -600,23 +524,16 @@ function convertOSMHotels(elements) {
         : null;
 
     hotels.push({
-      id:
-        `osm-hotel-${element.type}-${element.id}`,
+      id: `osm-hotel-${element.type}-${element.id}`,
 
-      name:
-        cleanText(name),
+      name: cleanText(name),
 
       category,
 
-      latitude:
-        coordinates.latitude,
+      latitude: coordinates.latitude,
 
-      longitude:
-        coordinates.longitude,
+      longitude: coordinates.longitude,
 
-      /*
-        null = current price unavailable
-      */
       price_per_night:
         Number.isFinite(price)
           ? price
@@ -627,44 +544,33 @@ function convertOSMHotels(elements) {
           ? rating
           : null,
 
-      address:
-        cleanText(
-          tags["addr:street"] ||
-          tags["addr:city"] ||
-          ""
-        ),
+      address: cleanText(
+        tags["addr:street"] ||
+        tags["addr:city"] ||
+        ""
+      ),
 
-      source:
-        "OpenStreetMap",
+      source: "OpenStreetMap",
     });
   }
 
-  return removeDuplicateHotels(
-    hotels
-  );
+  return removeDuplicateHotels(hotels);
 }
 
 /* =========================================================
    REMOVE DUPLICATE PLACES
 ========================================================= */
 
-function removeDuplicatePlaces(
-  places
-) {
+function removeDuplicatePlaces(places) {
   const unique = [];
   const seen = new Set();
 
   for (const place of places) {
-    const key =
-      normalizeName(place.name);
+    const key = normalizeName(place.name);
 
-    if (!key) {
-      continue;
-    }
+    if (!key) continue;
 
-    if (seen.has(key)) {
-      continue;
-    }
+    if (seen.has(key)) continue;
 
     seen.add(key);
 
@@ -678,23 +584,16 @@ function removeDuplicatePlaces(
    REMOVE DUPLICATE HOTELS
 ========================================================= */
 
-function removeDuplicateHotels(
-  hotels
-) {
+function removeDuplicateHotels(hotels) {
   const unique = [];
   const seen = new Set();
 
   for (const hotel of hotels) {
-    const key =
-      normalizeName(hotel.name);
+    const key = normalizeName(hotel.name);
 
-    if (!key) {
-      continue;
-    }
+    if (!key) continue;
 
-    if (seen.has(key)) {
-      continue;
-    }
+    if (seen.has(key)) continue;
 
     seen.add(key);
 
@@ -736,7 +635,7 @@ async function queryOverpass(query) {
               "data=" +
               encodeURIComponent(query),
           },
-          14000
+          10000
         );
 
       if (!response.ok) {
@@ -752,10 +651,12 @@ async function queryOverpass(query) {
 
       if (
         data &&
-        Array.isArray(
-          data.elements
-        )
+        Array.isArray(data.elements)
       ) {
+        console.log(
+          `✅ Overpass returned ${data.elements.length} elements`
+        );
+
         return data.elements;
       }
     } catch (error) {
@@ -835,25 +736,19 @@ function calculateDistanceKm(
   const earthRadius = 6371;
 
   const dLat =
-    ((lat2 - lat1) *
-      Math.PI) /
-    180;
+    ((lat2 - lat1) * Math.PI) / 180;
 
   const dLon =
-    ((lon2 - lon1) *
-      Math.PI) /
-    180;
+    ((lon2 - lon1) * Math.PI) / 180;
 
   const a =
     Math.sin(dLat / 2) *
       Math.sin(dLat / 2) +
     Math.cos(
-      (lat1 * Math.PI) /
-        180
+      (lat1 * Math.PI) / 180
     ) *
       Math.cos(
-        (lat2 * Math.PI) /
-          180
+        (lat2 * Math.PI) / 180
       ) *
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
@@ -949,19 +844,13 @@ function scorePlace(
   destinationLocation
 ) {
   const name =
-    cleanText(
-      place.name
-    ).toLowerCase();
+    cleanText(place.name).toLowerCase();
 
   const category =
-    cleanText(
-      place.category
-    ).toLowerCase();
+    cleanText(place.category).toLowerCase();
 
   const description =
-    cleanText(
-      place.description
-    ).toLowerCase();
+    cleanText(place.description).toLowerCase();
 
   const combined =
     `${name} ${category} ${description}`;
@@ -976,9 +865,7 @@ function scorePlace(
 
   let score = 0;
 
-  /* =======================================================
-     DISTANCE
-  ======================================================= */
+  /* DISTANCE */
 
   if (distance <= 2) {
     score += 40;
@@ -992,14 +879,10 @@ function scorePlace(
     score += 5;
   }
 
-  /* =======================================================
-     INTEREST MATCHING
-  ======================================================= */
+  /* INTEREST */
 
   const keywords =
-    INTEREST_KEYWORDS[
-      interest
-    ] || [];
+    INTEREST_KEYWORDS[interest] || [];
 
   for (const keyword of keywords) {
     if (
@@ -1011,9 +894,7 @@ function scorePlace(
     }
   }
 
-  /* =======================================================
-     CATEGORY BONUS
-  ======================================================= */
+  /* CATEGORY BONUS */
 
   if (
     interest === "Nature" &&
@@ -1103,7 +984,7 @@ function rankPlaces(
 }
 
 /* =========================================================
-   FALLBACK NOMINATIM PLACE SEARCH
+   FALLBACK NOMINATIM SEARCH
 ========================================================= */
 
 async function fallbackTouristSearch(
@@ -1112,10 +993,14 @@ async function fallbackTouristSearch(
   const queries = [
     `tourist attractions in ${destination}`,
     `tourist places in ${destination}`,
-    `places to visit in ${destination}`,
   ];
 
   const results = [];
+
+  /*
+    Run fallback queries one by one
+    because Nominatim has usage limits.
+  */
 
   for (const search of queries) {
     try {
@@ -1139,7 +1024,7 @@ async function fallbackTouristSearch(
                 "application/json",
             },
           },
-          7000
+          6000
         );
 
       if (!response.ok) {
@@ -1158,8 +1043,6 @@ async function fallbackTouristSearch(
         error.message
       );
     }
-
-    await sleep(1100);
   }
 
   const places = [];
@@ -1180,8 +1063,7 @@ async function fallbackTouristSearch(
 
     const name =
       item.name ||
-      item.display_name
-        ?.split(",")[0] ||
+      item.display_name?.split(",")[0] ||
       "";
 
     if (!cleanText(name)) {
@@ -1192,8 +1074,7 @@ async function fallbackTouristSearch(
       id:
         `nominatim-${Date.now()}-${places.length}`,
 
-      name:
-        cleanText(name),
+      name: cleanText(name),
 
       category:
         "Tourist Attraction",
@@ -1208,25 +1089,17 @@ async function fallbackTouristSearch(
 
       longitude,
 
-      /*
-        Unknown price.
-        Do NOT use 0.
-      */
-      estimated_cost:
-        null,
+      estimated_cost: null,
 
       state:
-        item.address?.state ||
-        "",
+        item.address?.state || "",
 
       source:
         "OpenStreetMap",
     });
   }
 
-  return removeDuplicatePlaces(
-    places
-  );
+  return removeDuplicatePlaces(places);
 }
 
 /* =========================================================
@@ -1257,12 +1130,6 @@ async function getDatabasePlaces() {
           safeNumber(
             place.longitude
           ),
-
-        /*
-          Convert database 0 to null
-          because 0 was previously being
-          used as an unknown price.
-        */
 
         estimated_cost:
           Number(place.estimated_cost) > 0
@@ -1321,12 +1188,6 @@ async function getDatabaseHotels() {
             safeNumber(
               hotel.longitude
             ),
-
-          /*
-            0 means unknown in the old
-            database structure.
-            Convert it to null.
-          */
 
           price_per_night:
             Number.isFinite(price) &&
@@ -1402,9 +1263,7 @@ function scoreHotel(
 
   let score = 0;
 
-  /* =======================================================
-     PRICE
-  ======================================================= */
+  /* PRICE */
 
   if (
     Number.isFinite(price) &&
@@ -1415,9 +1274,7 @@ function scoreHotel(
     const remaining =
       budgetPerNight - price;
 
-    if (
-      budgetPerNight > 0
-    ) {
+    if (budgetPerNight > 0) {
       score += Math.min(
         20,
         (remaining /
@@ -1427,26 +1284,18 @@ function scoreHotel(
     }
   }
 
-  /* =======================================================
-     RATING
-  ======================================================= */
+  /* RATING */
 
-  if (
-    Number.isFinite(rating)
-  ) {
+  if (Number.isFinite(rating)) {
     score += Math.min(
       25,
       rating * 5
     );
   }
 
-  /* =======================================================
-     DISTANCE
-  ======================================================= */
+  /* DISTANCE */
 
-  if (
-    Number.isFinite(distance)
-  ) {
+  if (Number.isFinite(distance)) {
     if (distance <= 2) {
       score += 20;
     } else if (distance <= 5) {
@@ -1456,10 +1305,7 @@ function scoreHotel(
     }
   }
 
-  /*
-    Unknown price gets a penalty,
-    but it is NOT converted to ₹0.
-  */
+  /* UNKNOWN PRICE */
 
   if (!Number.isFinite(price)) {
     score -= 100;
@@ -1480,55 +1326,52 @@ function recommendHotels(
   destinationLocation,
   budgetPerNight
 ) {
-  const scored =
-    hotels
-      .map((hotel) => {
-        const result =
-          scoreHotel(
-            hotel,
-            destinationLocation,
-            budgetPerNight
-          );
-
-        return {
-          ...hotel,
-
-          recommendationScore:
-            result.score,
-
-          distanceKm:
-            Number.isFinite(
-              result.distance
-            )
-              ? Number(
-                  result.distance.toFixed(2)
-                )
-              : null,
-        };
-      })
-      .filter((hotel) => {
-        const price =
-          safeNumber(
-            hotel.price_per_night
-          );
-
-        return (
-          Number.isFinite(price) &&
-          price > 0 &&
-          price <=
-            budgetPerNight
+  return hotels
+    .map((hotel) => {
+      const result =
+        scoreHotel(
+          hotel,
+          destinationLocation,
+          budgetPerNight
         );
-      })
-      .sort(
-        (a, b) =>
-          b.recommendationScore -
-          a.recommendationScore
-      );
 
-  return scored.slice(
-    0,
-    MAX_RECOMMENDED_HOTELS
-  );
+      return {
+        ...hotel,
+
+        recommendationScore:
+          result.score,
+
+        distanceKm:
+          Number.isFinite(
+            result.distance
+          )
+            ? Number(
+                result.distance.toFixed(2)
+              )
+            : null,
+      };
+    })
+    .filter((hotel) => {
+      const price =
+        safeNumber(
+          hotel.price_per_night
+        );
+
+      return (
+        Number.isFinite(price) &&
+        price > 0 &&
+        price <= budgetPerNight
+      );
+    })
+    .sort(
+      (a, b) =>
+        b.recommendationScore -
+        a.recommendationScore
+    )
+    .slice(
+      0,
+      MAX_RECOMMENDED_HOTELS
+    );
 }
 
 /* =========================================================
@@ -1556,9 +1399,7 @@ function getNearbyUnknownPriceHotels(
           hotel.longitude
         );
 
-      if (
-        Number.isFinite(price)
-      ) {
+      if (Number.isFinite(price)) {
         return null;
       }
 
@@ -1585,8 +1426,7 @@ function getNearbyUnknownPriceHotels(
             distance.toFixed(2)
           ),
 
-        recommendationScore:
-          0,
+        recommendationScore: 0,
       };
     })
     .filter(Boolean)
@@ -1624,10 +1464,7 @@ app.get(
 
     if (db) {
       try {
-        await db.query(
-          "SELECT 1"
-        );
-
+        await db.query("SELECT 1");
         mysqlConnected = true;
       } catch {
         mysqlConnected = false;
@@ -1639,17 +1476,13 @@ app.get(
 
       backend: true,
 
-      mysql:
-        mysqlConnected,
+      mysql: mysqlConnected,
 
-      internetPlaces:
-        true,
+      internetPlaces: true,
 
-      automaticRecommendations:
-        true,
+      automaticRecommendations: true,
 
-      smartRanking:
-        true,
+      smartRanking: true,
 
       message:
         "SmartTourism backend is working",
@@ -1658,7 +1491,7 @@ app.get(
 );
 
 /* =========================================================
-   DATABASE PLACES
+   DATABASE PLACES API
 ========================================================= */
 
 app.get(
@@ -1675,7 +1508,7 @@ app.get(
 );
 
 /* =========================================================
-   DATABASE HOTELS
+   DATABASE HOTELS API
 ========================================================= */
 
 app.get(
@@ -1771,14 +1604,10 @@ app.post(
       }
 
       const cleanDestination =
-        cleanText(
-          destination
-        );
+        cleanText(destination);
 
       const selectedInterest =
-        INTEREST_KEYWORDS[
-          interest
-        ]
+        INTEREST_KEYWORDS[interest]
           ? interest
           : "All";
 
@@ -1822,7 +1651,7 @@ app.post(
       );
 
       /* ===================================================
-         1. GEOCODE DESTINATION
+         1. GEOCODE
       =================================================== */
 
       const destinationLocation =
@@ -1833,49 +1662,79 @@ app.post(
       if (!destinationLocation) {
         return res.status(404).json({
           success: false,
-
           message:
             `Could not find destination "${cleanDestination}". Try a valid city or tourist destination name.`,
         });
       }
 
       /* ===================================================
-         2. DATABASE PLACES
+         2. DATABASE DATA
+         
+         Fetch places + hotels together.
       =================================================== */
 
-      const databasePlaces =
-        await getDatabasePlaces();
+      console.log(
+        "📦 Loading MySQL places and hotels..."
+      );
+
+      const [
+        databasePlaces,
+        databaseHotels,
+      ] = await Promise.all([
+        getDatabasePlaces(),
+        getDatabaseHotels(),
+      ]);
 
       console.log(
         `📦 Database places: ${databasePlaces.length}`
       );
 
+      console.log(
+        `🏨 Database hotels: ${databaseHotels.length}`
+      );
+
       /* ===================================================
-         3. INTERNET PLACES
+         3. INTERNET DATA
+         
+         IMPORTANT:
+         Places and hotels are now fetched
+         IN PARALLEL.
       =================================================== */
 
       console.log(
-        "🌐 Searching Internet-based tourist places..."
+        "🌐 Searching Internet places and hotels..."
       );
 
-      let automaticPlaces =
-        await findTouristPlaces(
+      const [
+        automaticPlaces,
+        automaticHotels,
+      ] = await Promise.all([
+        findTouristPlaces(
           destinationLocation.latitude,
           destinationLocation.longitude
-        );
+        ),
+
+        findHotels(
+          destinationLocation.latitude,
+          destinationLocation.longitude
+        ),
+      ]);
 
       /* ===================================================
-         4. FALLBACK
+         4. FALLBACK PLACES
       =================================================== */
 
+      let finalAutomaticPlaces =
+        automaticPlaces;
+
       if (
-        automaticPlaces.length === 0
+        finalAutomaticPlaces.length === 0
       ) {
         console.log(
-          "🔄 Using Nominatim fallback..."
+          "🔄 Overpass returned no places. Using Nominatim fallback..."
         );
 
-        automaticPlaces =
+        finalAutomaticPlaces =
           await fallbackTouristSearch(
             cleanDestination
           );
@@ -1887,7 +1746,7 @@ app.post(
 
       const combinedPlaces = [
         ...databasePlaces,
-        ...automaticPlaces,
+        ...finalAutomaticPlaces,
       ];
 
       /* ===================================================
@@ -1918,9 +1777,7 @@ app.post(
               latitude <= 90 &&
               longitude >= -180 &&
               longitude <= 180 &&
-              cleanText(
-                place.name
-              )
+              cleanText(place.name)
             );
           }
         );
@@ -1966,32 +1823,7 @@ app.post(
       );
 
       /* ===================================================
-         9. DATABASE HOTELS
-      =================================================== */
-
-      const databaseHotels =
-        await getDatabaseHotels();
-
-      console.log(
-        `🏨 Database hotels: ${databaseHotels.length}`
-      );
-
-      /* ===================================================
-         10. INTERNET HOTELS
-      =================================================== */
-
-      console.log(
-        "🌐 Searching Internet-based hotels..."
-      );
-
-      const automaticHotels =
-        await findHotels(
-          destinationLocation.latitude,
-          destinationLocation.longitude
-        );
-
-      /* ===================================================
-         11. MERGE HOTELS
+         9. MERGE HOTELS
       =================================================== */
 
       const combinedHotels = [
@@ -2009,7 +1841,7 @@ app.post(
       );
 
       /* ===================================================
-         12. HOTEL BUDGET
+         10. HOTEL BUDGET
       =================================================== */
 
       const hotelTotalBudget =
@@ -2024,7 +1856,7 @@ app.post(
         numberOfDays;
 
       /* ===================================================
-         13. RECOMMEND HOTELS
+         11. RECOMMEND HOTELS
       =================================================== */
 
       let recommendedHotels =
@@ -2035,7 +1867,7 @@ app.post(
         );
 
       /* ===================================================
-         14. FALLBACK HOTEL BUDGET
+         12. FALLBACK HOTEL BUDGET
       =================================================== */
 
       if (
@@ -2049,11 +1881,9 @@ app.post(
           );
       }
 
-      /*
-        If no hotel has confirmed price,
-        show nearby hotels as "Price on request"
-        instead of showing ₹0.
-      */
+      /* ===================================================
+         13. UNKNOWN PRICE HOTELS
+      =================================================== */
 
       if (
         recommendedHotels.length === 0
@@ -2070,16 +1900,15 @@ app.post(
       );
 
       /* ===================================================
-         15. STATE
+         14. STATE
       =================================================== */
 
       const state =
-        destinationLocation
-          .address?.state ||
+        destinationLocation.address?.state ||
         "India";
 
       /* ===================================================
-         16. DESCRIPTION
+         15. DESCRIPTION
       =================================================== */
 
       const description =
@@ -2092,7 +1921,7 @@ app.post(
         )} budget.`;
 
       /* ===================================================
-         17. FINAL TRIP
+         16. FINAL TRIP
       =================================================== */
 
       const trip = {
@@ -2145,11 +1974,6 @@ app.post(
         dataSource:
           "OpenStreetMap + MySQL",
 
-        /*
-          This version uses smart
-          rule-based recommendation,
-          not an external AI model.
-        */
         aiUsed:
           false,
 
@@ -2158,7 +1982,7 @@ app.post(
       };
 
       /* ===================================================
-         18. LOG
+         17. LOG
       =================================================== */
 
       console.log(
@@ -2190,7 +2014,7 @@ app.post(
       );
 
       /* ===================================================
-         19. RESPONSE
+         18. RESPONSE
       =================================================== */
 
       return res.json({
@@ -2280,6 +2104,10 @@ async function startServer() {
       );
 
       console.log(
+        "⚡ Parallel API requests: ENABLED"
+      );
+
+      console.log(
         "🗺️ Maximum map places: 40"
       );
 
@@ -2301,4 +2129,3 @@ async function startServer() {
 }
 
 startServer();
-
