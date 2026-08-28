@@ -36,6 +36,63 @@ L.Icon.Default.mergeOptions({
 });
 
 /* =========================================================
+   HELPER FUNCTIONS
+========================================================= */
+
+const isValidNumber = (value) => {
+  return (
+    value !== null &&
+    value !== undefined &&
+    value !== "" &&
+    Number.isFinite(Number(value))
+  );
+};
+
+const hasPrice = (value) => {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return false;
+  }
+
+  const number = Number(value);
+
+  return Number.isFinite(number) && number >= 0;
+};
+
+const formatPrice = (value) => {
+  if (!hasPrice(value)) {
+    return "Price not found";
+  }
+
+  return `₹${Number(value).toLocaleString("en-IN")}`;
+};
+
+const formatCost = (value) => {
+  if (!hasPrice(value)) {
+    return "Cost not found";
+  }
+
+  return `₹${Number(value).toLocaleString("en-IN")}`;
+};
+
+const getPlaceKey = (place) => {
+  return (
+    place.id ||
+    `${place.name}-${place.latitude}-${place.longitude}`
+  );
+};
+
+const getHotelKey = (hotel) => {
+  return (
+    hotel.id ||
+    `${hotel.name}-${hotel.latitude}-${hotel.longitude}`
+  );
+};
+
+/* =========================================================
    CURRENT LOCATION ICON
 ========================================================= */
 
@@ -142,10 +199,6 @@ function MapViewController({
 
     const points = [];
 
-    /* -----------------------------------------
-       ADD TOURIST PLACES
-    ----------------------------------------- */
-
     places.forEach((place) => {
       const lat = Number(place.latitude);
       const lng = Number(place.longitude);
@@ -157,10 +210,6 @@ function MapViewController({
         points.push([lat, lng]);
       }
     });
-
-    /* -----------------------------------------
-       ADD HOTELS
-    ----------------------------------------- */
 
     hotels.forEach((hotel) => {
       const lat = Number(hotel.latitude);
@@ -174,10 +223,6 @@ function MapViewController({
       }
     });
 
-    /* -----------------------------------------
-       ADD CURRENT LOCATION
-    ----------------------------------------- */
-
     if (currentLocation) {
       const lat = Number(currentLocation[0]);
       const lng = Number(currentLocation[1]);
@@ -189,10 +234,6 @@ function MapViewController({
         points.push([lat, lng]);
       }
     }
-
-    /* -----------------------------------------
-       FIRST MAP FIT
-    ----------------------------------------- */
 
     if (
       points.length > 0 &&
@@ -209,10 +250,6 @@ function MapViewController({
 
       return;
     }
-
-    /* -----------------------------------------
-       ROUTE PLACE SELECTED
-    ----------------------------------------- */
 
     if (
       selectedPlace &&
@@ -266,14 +303,9 @@ function RoutingControl({
 }) {
   const map = useMap();
 
-  const routingControlRef =
-    useRef(null);
+  const routingControlRef = useRef(null);
 
   useEffect(() => {
-    /* -----------------------------------------
-       REMOVE OLD ROUTE
-    ----------------------------------------- */
-
     if (routingControlRef.current) {
       try {
         map.removeControl(
@@ -288,10 +320,6 @@ function RoutingControl({
 
       routingControlRef.current = null;
     }
-
-    /* -----------------------------------------
-       CHECK LOCATION + DESTINATION
-    ----------------------------------------- */
 
     if (
       !currentLocation ||
@@ -330,10 +358,6 @@ function RoutingControl({
 
       return undefined;
     }
-
-    /* -----------------------------------------
-       CREATE ROUTING CONTROL
-    ----------------------------------------- */
 
     const startPoint = L.latLng(
       startLat,
@@ -381,9 +405,7 @@ function RoutingControl({
 
         fitSelectedRoutes: false,
 
-        createMarker: function () {
-          return null;
-        },
+        createMarker: () => null,
 
         show: false,
 
@@ -392,10 +414,6 @@ function RoutingControl({
 
     routingControlRef.current =
       routingControl;
-
-    /* -----------------------------------------
-       ROUTE FOUND
-    ----------------------------------------- */
 
     routingControl.on(
       "routesfound",
@@ -430,10 +448,6 @@ function RoutingControl({
       }
     );
 
-    /* -----------------------------------------
-       ROUTE ERROR
-    ----------------------------------------- */
-
     routingControl.on(
       "routingerror",
       (event) => {
@@ -443,10 +457,6 @@ function RoutingControl({
         );
       }
     );
-
-    /* -----------------------------------------
-       CLEANUP
-    ----------------------------------------- */
 
     return () => {
       if (routingControlRef.current) {
@@ -502,15 +512,7 @@ function TourismMap({
     setSelectedPlace,
   ] = useState(null);
 
-  /* =======================================================
-     MAP REF
-  ======================================================= */
-
   const mapRef = useRef(null);
-
-  /* =======================================================
-     MARKER REFS
-  ======================================================= */
 
   const placeMarkerRefs = useRef({});
 
@@ -583,9 +585,7 @@ function TourismMap({
 
       {
         enableHighAccuracy: true,
-
         timeout: 30000,
-
         maximumAge: 60000,
       }
     );
@@ -606,8 +606,8 @@ function TourismMap({
   const focusPlaceOnMap = (place) => {
     if (
       !place ||
-      place.latitude == null ||
-      place.longitude == null
+      !isValidNumber(place.latitude) ||
+      !isValidNumber(place.longitude)
     ) {
       setLocationError(
         "This place does not have valid map coordinates."
@@ -616,67 +616,22 @@ function TourismMap({
       return;
     }
 
-    const lat = Number(
-      place.latitude
-    );
-
-    const lng = Number(
-      place.longitude
-    );
-
-    if (
-      !Number.isFinite(lat) ||
-      !Number.isFinite(lng)
-    ) {
-      setLocationError(
-        "This place has invalid map coordinates."
-      );
-
-      return;
-    }
-
-    console.log(
-      "Focusing place on map:",
-      place.name,
-      lat,
-      lng
-    );
-
-    /* -----------------------------------------
-       CLEAR ROUTE
-    ----------------------------------------- */
+    const lat = Number(place.latitude);
+    const lng = Number(place.longitude);
 
     setSelectedPlace(null);
 
-    /* -----------------------------------------
-       SCROLL TO MAP
-    ----------------------------------------- */
-
-    setTimeout(() => {
-      document
-        .querySelector(
-          ".tourism-map-section"
-        )
-        ?.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-    }, 100);
-
-    /* -----------------------------------------
-       MOVE MAP
-    ----------------------------------------- */
+    document
+      .querySelector(".tourism-map-section")
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
 
     setTimeout(() => {
       const map = mapRef.current;
 
-      if (!map) {
-        console.warn(
-          "Map reference not available"
-        );
-
-        return;
-      }
+      if (!map) return;
 
       map.flyTo(
         [lat, lng],
@@ -686,14 +641,9 @@ function TourismMap({
         }
       );
 
-      /* -----------------------------------------
-         OPEN PLACE POPUP
-      ----------------------------------------- */
-
       setTimeout(() => {
         const markerKey =
-          place.id ||
-          `${place.name}-${place.latitude}-${place.longitude}`;
+          getPlaceKey(place);
 
         const marker =
           placeMarkerRefs.current[
@@ -714,8 +664,8 @@ function TourismMap({
   const focusHotelOnMap = (hotel) => {
     if (
       !hotel ||
-      hotel.latitude == null ||
-      hotel.longitude == null
+      !isValidNumber(hotel.latitude) ||
+      !isValidNumber(hotel.longitude)
     ) {
       setLocationError(
         "This hotel does not have valid map coordinates."
@@ -724,67 +674,22 @@ function TourismMap({
       return;
     }
 
-    const lat = Number(
-      hotel.latitude
-    );
-
-    const lng = Number(
-      hotel.longitude
-    );
-
-    if (
-      !Number.isFinite(lat) ||
-      !Number.isFinite(lng)
-    ) {
-      setLocationError(
-        "This hotel has invalid map coordinates."
-      );
-
-      return;
-    }
-
-    console.log(
-      "Focusing hotel on map:",
-      hotel.name,
-      lat,
-      lng
-    );
-
-    /* -----------------------------------------
-       CLEAR ROUTE
-    ----------------------------------------- */
+    const lat = Number(hotel.latitude);
+    const lng = Number(hotel.longitude);
 
     setSelectedPlace(null);
 
-    /* -----------------------------------------
-       SCROLL TO MAP
-    ----------------------------------------- */
-
-    setTimeout(() => {
-      document
-        .querySelector(
-          ".tourism-map-section"
-        )
-        ?.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-    }, 100);
-
-    /* -----------------------------------------
-       MOVE MAP
-    ----------------------------------------- */
+    document
+      .querySelector(".tourism-map-section")
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
 
     setTimeout(() => {
       const map = mapRef.current;
 
-      if (!map) {
-        console.warn(
-          "Map reference not available"
-        );
-
-        return;
-      }
+      if (!map) return;
 
       map.flyTo(
         [lat, lng],
@@ -794,14 +699,9 @@ function TourismMap({
         }
       );
 
-      /* -----------------------------------------
-         OPEN HOTEL POPUP
-      ----------------------------------------- */
-
       setTimeout(() => {
         const markerKey =
-          hotel.id ||
-          `${hotel.name}-${hotel.latitude}-${hotel.longitude}`;
+          getHotelKey(hotel);
 
         const marker =
           hotelMarkerRefs.current[
@@ -820,15 +720,6 @@ function TourismMap({
   ======================================================= */
 
   const handleShowRoute = (place) => {
-    console.log(
-      "Show route clicked:",
-      place
-    );
-
-    /* -----------------------------------------
-       LOCATION NOT AVAILABLE
-    ----------------------------------------- */
-
     if (!currentLocation) {
       setLocationError(
         "Please allow location access first."
@@ -839,24 +730,16 @@ function TourismMap({
       return;
     }
 
-    /* -----------------------------------------
-       VALIDATE DESTINATION
-    ----------------------------------------- */
-
     if (
-      place.latitude == null ||
-      place.longitude == null
+      !isValidNumber(place.latitude) ||
+      !isValidNumber(place.longitude)
     ) {
       setLocationError(
-        "Route is not available because this place has no map coordinates."
+        "Route is not available because this place has no valid map coordinates."
       );
 
       return;
     }
-
-    /* -----------------------------------------
-       SET ROUTE DESTINATION
-    ----------------------------------------- */
 
     setSelectedPlace({
       ...place,
@@ -869,10 +752,6 @@ function TourismMap({
         place.longitude
       ),
     });
-
-    /* -----------------------------------------
-       SCROLL ROUTE PANEL
-    ----------------------------------------- */
 
     setTimeout(() => {
       document
@@ -901,17 +780,13 @@ function TourismMap({
   const mappedPlaces =
     Array.isArray(places)
       ? places.filter((place) => {
-          const lat = Number(
-            place.latitude
-          );
-
-          const lng = Number(
-            place.longitude
-          );
-
           return (
-            Number.isFinite(lat) &&
-            Number.isFinite(lng)
+            isValidNumber(
+              place.latitude
+            ) &&
+            isValidNumber(
+              place.longitude
+            )
           );
         })
       : [];
@@ -923,17 +798,13 @@ function TourismMap({
   const mappedHotels =
     Array.isArray(hotels)
       ? hotels.filter((hotel) => {
-          const lat = Number(
-            hotel.latitude
-          );
-
-          const lng = Number(
-            hotel.longitude
-          );
-
           return (
-            Number.isFinite(lat) &&
-            Number.isFinite(lng)
+            isValidNumber(
+              hotel.latitude
+            ) &&
+            isValidNumber(
+              hotel.longitude
+            )
           );
         })
       : [];
@@ -942,47 +813,10 @@ function TourismMap({
      MAP CENTER
   ======================================================= */
 
-  const defaultCenter = [
+  const mapCenter = [
     22.5726,
     88.3639,
   ];
-
-  const mapCenter =
-    defaultCenter;
-
-  /* =======================================================
-     DEBUG
-  ======================================================= */
-
-  console.log(
-    "TourismMap places:",
-    places
-  );
-
-  console.log(
-    "Mapped places:",
-    mappedPlaces
-  );
-
-  console.log(
-    "TourismMap hotels:",
-    hotels
-  );
-
-  console.log(
-    "Mapped hotels:",
-    mappedHotels
-  );
-
-  console.log(
-    "Current location:",
-    currentLocation
-  );
-
-  console.log(
-    "Selected place:",
-    selectedPlace
-  );
 
   /* =======================================================
      RETURN
@@ -991,24 +825,17 @@ function TourismMap({
   return (
     <div className="tourism-map-section">
 
-      {/* =================================================
-          HEADER
-      ================================================= */}
-
       <div
         style={{
           display: "flex",
-          justifyContent:
-            "space-between",
+          justifyContent: "space-between",
           alignItems: "center",
           gap: "15px",
           marginBottom: "15px",
           flexWrap: "wrap",
         }}
       >
-
         <div>
-
           <p className="small-label">
             EXPLORE{" "}
             {destination?.toUpperCase()}
@@ -1024,7 +851,6 @@ function TourismMap({
           >
             Explore Nearby Places
           </h3>
-
         </div>
 
         <button
@@ -1049,12 +875,7 @@ function TourismMap({
             ? "Detecting..."
             : "📍 My Location"}
         </button>
-
       </div>
-
-      {/* =================================================
-          LOCATION ERROR
-      ================================================= */}
 
       {locationError && (
         <div
@@ -1066,10 +887,6 @@ function TourismMap({
           ⚠️ {locationError}
         </div>
       )}
-
-      {/* =================================================
-          LOCATION SUCCESS
-      ================================================= */}
 
       {currentLocation && (
         <div
@@ -1098,10 +915,6 @@ function TourismMap({
         </div>
       )}
 
-      {/* =================================================
-          MAP LEGEND
-      ================================================= */}
-
       <div
         style={{
           display: "flex",
@@ -1112,7 +925,6 @@ function TourismMap({
           color: "#68756d",
         }}
       >
-
         <span>
           🗺️ Tourist Place
         </span>
@@ -1124,12 +936,7 @@ function TourismMap({
         <span>
           🔵 Your Location
         </span>
-
       </div>
-
-      {/* =================================================
-          NO MAP PLACES
-      ================================================= */}
 
       {mappedPlaces.length === 0 &&
         mappedHotels.length === 0 && (
@@ -1155,10 +962,6 @@ function TourismMap({
           </div>
         )}
 
-      {/* =================================================
-          MAP
-      ================================================= */}
-
       <div className="map-wrapper">
 
         <MapContainer
@@ -1174,10 +977,6 @@ function TourismMap({
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          {/* ============================================
-              MAP VIEW
-          ============================================ */}
-
           <MapViewController
             places={mappedPlaces}
             hotels={mappedHotels}
@@ -1189,9 +988,7 @@ function TourismMap({
             }
           />
 
-          {/* ============================================
-              CURRENT LOCATION
-          ============================================ */}
+          {/* CURRENT LOCATION */}
 
           {currentLocation && (
             <Marker
@@ -1202,9 +999,7 @@ function TourismMap({
                 currentLocationIcon
               }
             >
-
               <Popup>
-
                 <strong>
                   📍 Your Current Location
                 </strong>
@@ -1226,22 +1021,16 @@ function TourismMap({
                     6
                   )}
                 </small>
-
               </Popup>
-
             </Marker>
           )}
 
-          {/* ============================================
-              TOURIST PLACES
-          ============================================ */}
+          {/* TOURIST PLACES */}
 
           {mappedPlaces.map(
             (place) => {
-
               const markerKey =
-                place.id ||
-                `${place.name}-${place.latitude}-${place.longitude}`;
+                getPlaceKey(place);
 
               return (
                 <Marker
@@ -1265,16 +1054,13 @@ function TourismMap({
                     }
                   }}
                 >
-
                   <Popup>
-
                     <div
                       style={{
                         minWidth:
                           "220px",
                       }}
                     >
-
                       <strong
                         style={{
                           fontSize:
@@ -1322,24 +1108,14 @@ function TourismMap({
                         </>
                       )}
 
-                      {place.estimated_cost !==
-                        undefined && (
-                        <>
-                          <br />
+                      <br />
 
-                          <small>
-                            💰 Estimated: ₹
-                            {Number(
-                              place.estimated_cost ||
-                                0
-                            ).toLocaleString(
-                              "en-IN"
-                            )}
-                          </small>
-                        </>
-                      )}
-
-                      {/* ROUTE */}
+                      <small>
+                        💰{" "}
+                        {formatCost(
+                          place.estimated_cost
+                        )}
+                      </small>
 
                       <button
                         type="button"
@@ -1351,8 +1127,7 @@ function TourismMap({
                         style={{
                           marginTop:
                             "10px",
-                          width:
-                            "100%",
+                          width: "100%",
                           border:
                             "none",
                           borderRadius:
@@ -1361,8 +1136,7 @@ function TourismMap({
                             "9px",
                           background:
                             "#17221d",
-                          color:
-                            "white",
+                          color: "white",
                           cursor:
                             "pointer",
                           fontWeight:
@@ -1371,26 +1145,19 @@ function TourismMap({
                       >
                         🧭 Show Route
                       </button>
-
                     </div>
-
                   </Popup>
-
                 </Marker>
               );
             }
           )}
 
-          {/* ============================================
-              HOTEL MARKERS
-          ============================================ */}
+          {/* HOTEL MARKERS */}
 
           {mappedHotels.map(
             (hotel) => {
-
               const markerKey =
-                hotel.id ||
-                `${hotel.name}-${hotel.latitude}-${hotel.longitude}`;
+                getHotelKey(hotel);
 
               return (
                 <Marker
@@ -1403,9 +1170,7 @@ function TourismMap({
                       hotel.longitude
                     ),
                   ]}
-                  icon={
-                    hotelIcon
-                  }
+                  icon={hotelIcon}
                   ref={(marker) => {
                     if (marker) {
                       hotelMarkerRefs.current[
@@ -1414,16 +1179,13 @@ function TourismMap({
                     }
                   }}
                 >
-
                   <Popup>
-
                     <div
                       style={{
                         minWidth:
                           "220px",
                       }}
                     >
-
                       <strong
                         style={{
                           fontSize:
@@ -1447,48 +1209,42 @@ function TourismMap({
                         Hotel
                       </span>
 
-                      <br />
-
                       {hotel.rating !=
                         null &&
                         hotel.rating !==
                           "" && (
-                          <small>
-                            ⭐{" "}
-                            {
-                              hotel.rating
-                            }
-                          </small>
+                          <>
+                            <br />
+
+                            <small>
+                              ⭐{" "}
+                              {
+                                hotel.rating
+                              }
+                            </small>
+                          </>
                         )}
 
                       <br />
 
-                      {hotel.price_per_night !=
-                        null && (
-                        <small>
-                          💰 ₹
-                          {Number(
-                            hotel.price_per_night ||
-                              0
-                          ).toLocaleString(
-                            "en-IN"
-                          )}{" "}
-                          / night
-                        </small>
-                      )}
-
+                      <small>
+                        💰{" "}
+                        {formatPrice(
+                          hotel.price_per_night
+                        )}{" "}
+                        {hasPrice(
+                          hotel.price_per_night
+                        ) &&
+                          "/ night"}
+                      </small>
                     </div>
-
                   </Popup>
-
                 </Marker>
               );
             }
           )}
 
-          {/* ============================================
-              ROUTE
-          ============================================ */}
+          {/* ROUTE */}
 
           {currentLocation &&
             selectedPlace && (
@@ -1503,12 +1259,7 @@ function TourismMap({
             )}
 
         </MapContainer>
-
       </div>
-
-      {/* =================================================
-          MAP COUNT
-      ================================================= */}
 
       <p
         style={{
@@ -1524,9 +1275,7 @@ function TourismMap({
         available on the map.
       </p>
 
-      {/* =================================================
-          ROUTE PANEL
-      ================================================= */}
+      {/* ROUTE PANEL */}
 
       {selectedPlace && (
         <div
@@ -1542,7 +1291,6 @@ function TourismMap({
               "0 10px 30px rgba(0,0,0,0.06)",
           }}
         >
-
           <div
             style={{
               display: "flex",
@@ -1553,9 +1301,7 @@ function TourismMap({
               flexWrap: "wrap",
             }}
           >
-
             <div>
-
               <p className="small-label">
                 DIRECTIONS
               </p>
@@ -1595,7 +1341,6 @@ function TourismMap({
                 📍{" "}
                 {selectedPlace.name}
               </h3>
-
             </div>
 
             <button
@@ -1621,7 +1366,6 @@ function TourismMap({
             >
               ✕ Clear Route
             </button>
-
           </div>
 
           <p
@@ -1638,10 +1382,8 @@ function TourismMap({
             </strong>
             .
           </p>
-
         </div>
       )}
-
     </div>
   );
 }
@@ -1761,23 +1503,6 @@ function App() {
         data.trip
       );
 
-      console.log(
-        "ALL PLACES:",
-        data.trip?.allPlaces
-      );
-
-      console.log(
-        "RECOMMENDED:",
-        data.trip
-          ?.recommendedPlaces
-      );
-
-      console.log(
-        "HOTELS:",
-        data.trip
-          ?.recommendedHotels
-      );
-
       setTrip(data.trip);
 
       setTimeout(() => {
@@ -1786,11 +1511,9 @@ function App() {
             "trip-result"
           )
           ?.scrollIntoView({
-            behavior:
-              "smooth",
+            behavior: "smooth",
           });
       }, 150);
-
     } catch (err) {
       console.error(err);
 
@@ -1814,12 +1537,28 @@ function App() {
         Number(days)
       : 0;
 
+  /*
+     IMPORTANT:
+     Hotels without price are NOT considered affordable.
+  */
+
   const affordableHotels =
     trip?.recommendedHotels?.filter(
-      (hotel) =>
-        Number(
-          hotel.price_per_night
-        ) <= budgetPerNight
+      (hotel) => {
+        if (
+          !hasPrice(
+            hotel.price_per_night
+          )
+        ) {
+          return false;
+        }
+
+        return (
+          Number(
+            hotel.price_per_night
+          ) <= budgetPerNight
+        );
+      }
     ) || [];
 
   /* =======================================================
@@ -1829,19 +1568,15 @@ function App() {
   return (
     <div className="app">
 
-      {/* =================================================
-          NAVBAR
-      ================================================= */}
+      {/* NAVBAR */}
 
       <nav className="navbar">
-
         <div className="logo">
           <span>✦</span>
           SmartTourism
         </div>
 
         <div className="nav-links">
-
           <a href="#home">
             Home
           </a>
@@ -1853,7 +1588,6 @@ function App() {
           <a href="#about">
             About
           </a>
-
         </div>
 
         <button
@@ -1871,20 +1605,15 @@ function App() {
         >
           Plan a Trip
         </button>
-
       </nav>
 
-      {/* =================================================
-          HERO
-      ================================================= */}
+      {/* HERO */}
 
       <main
         id="home"
         className="hero"
       >
-
         <div className="hero-content">
-
           <div className="badge">
             ✨ AI-Powered Travel
             Planning
@@ -1909,7 +1638,6 @@ function App() {
           </p>
 
           <div className="hero-stats">
-
             <div>
               <strong>
                 AI
@@ -1939,24 +1667,17 @@ function App() {
                 Travel Assistant
               </span>
             </div>
-
           </div>
-
         </div>
 
-        {/* =================================================
-            PLANNER
-        ================================================= */}
+        {/* PLANNER */}
 
         <div
           className="planner-card"
           id="planner"
         >
-
           <div className="planner-header">
-
             <div>
-
               <p className="small-label">
                 PLAN YOUR JOURNEY
               </p>
@@ -1965,13 +1686,11 @@ function App() {
                 Tell us about
                 your trip
               </h2>
-
             </div>
 
             <div className="ai-icon">
               ✦
             </div>
-
           </div>
 
           <form
@@ -1979,11 +1698,9 @@ function App() {
               handleGenerate
             }
           >
-
             {/* DESTINATION */}
 
             <div className="form-group">
-
               <label>
                 📍 Destination
               </label>
@@ -2000,15 +1717,12 @@ function App() {
                   )
                 }
               />
-
             </div>
 
             {/* DAYS + TRAVELLERS */}
 
             <div className="form-row">
-
               <div className="form-group">
-
                 <label>
                   📅 Days
                 </label>
@@ -2021,7 +1735,6 @@ function App() {
                     )
                   }
                 >
-
                   <option value="1">
                     1 Day
                   </option>
@@ -2045,13 +1758,10 @@ function App() {
                   <option value="7">
                     7 Days
                   </option>
-
                 </select>
-
               </div>
 
               <div className="form-group">
-
                 <label>
                   👥 Travellers
                 </label>
@@ -2066,7 +1776,6 @@ function App() {
                     )
                   }
                 >
-
                   <option value="1">
                     1 Traveller
                   </option>
@@ -2086,17 +1795,13 @@ function App() {
                   <option value="5">
                     5 Travellers
                   </option>
-
                 </select>
-
               </div>
-
             </div>
 
             {/* BUDGET */}
 
             <div className="form-group">
-
               <label>
                 💰 Total Budget
               </label>
@@ -2112,19 +1817,16 @@ function App() {
                   )
                 }
               />
-
             </div>
 
             {/* INTEREST */}
 
             <div className="form-group">
-
               <label>
                 ❤️ What do you enjoy?
               </label>
 
               <div className="interest-grid">
-
                 {interests.map(
                   (item) => (
                     <button
@@ -2146,9 +1848,7 @@ function App() {
                     </button>
                   )
                 )}
-
               </div>
-
             </div>
 
             {/* ERROR */}
@@ -2164,9 +1864,7 @@ function App() {
             <button
               type="submit"
               className="generate-button"
-              disabled={
-                loading
-              }
+              disabled={loading}
             >
               {loading
                 ? "Creating your trip..."
@@ -2178,27 +1876,20 @@ function App() {
                 </span>
               )}
             </button>
-
           </form>
-
         </div>
-
       </main>
 
-      {/* =================================================
-          TRIP RESULT
-      ================================================= */}
+      {/* TRIP RESULT */}
 
       {trip && (
         <section
           id="trip-result"
           className="trip-result"
         >
-
           {/* RESULT HEADER */}
 
           <div className="result-heading">
-
             <p className="small-label">
               YOUR PERSONALIZED
               TRIP
@@ -2211,13 +1902,11 @@ function App() {
             <p>
               {trip.description}
             </p>
-
           </div>
 
           {/* SUMMARY */}
 
           <div className="trip-summary">
-
             <div>
               <strong>
                 {trip.days}
@@ -2262,19 +1951,13 @@ function App() {
                 Interest
               </span>
             </div>
-
           </div>
 
-          {/* =================================================
-              PLACES
-          ================================================= */}
+          {/* PLACES */}
 
           <div className="result-section">
-
             <div className="result-section-header">
-
               <div>
-
                 <p className="small-label">
                   DISCOVER
                 </p>
@@ -2283,7 +1966,6 @@ function App() {
                   Recommended
                   Places
                 </h3>
-
               </div>
 
               <span className="result-count">
@@ -2294,11 +1976,9 @@ function App() {
                 }{" "}
                 places
               </span>
-
             </div>
 
             <div className="result-grid">
-
               {trip
                 .recommendedPlaces
                 ?.length > 0 ? (
@@ -2308,50 +1988,44 @@ function App() {
                     (place) => (
                       <div
                         className="result-card"
-                        key={
-                          place.id ||
-                          `${place.name}-${place.latitude}-${place.longitude}`
-                        }
+                        key={getPlaceKey(
+                          place
+                        )}
                       >
-
                         <div className="result-card-icon">
                           🗺️
                         </div>
 
                         <div>
-
                           <h4>
                             {
                               place.name
                             }
                           </h4>
 
-                          <span className="category">
-                            {
-                              place.category
-                            }
-                          </span>
+                          {place.category && (
+                            <span className="category">
+                              {
+                                place.category
+                              }
+                            </span>
+                          )}
 
-                          <p>
-                            {
-                              place.description
-                            }
-                          </p>
+                          {place.description && (
+                            <p>
+                              {
+                                place.description
+                              }
+                            </p>
+                          )}
 
                           <strong>
                             Estimated
-                            cost: ₹
-                            {Number(
-                              place.estimated_cost ||
-                                0
-                            ).toLocaleString(
-                              "en-IN"
+                            cost:{" "}
+                            {formatCost(
+                              place.estimated_cost
                             )}
                           </strong>
-
-                          {/* =================================
-                              VIEW ON MAP
-                          ================================= */}
 
                           <button
                             type="button"
@@ -2390,9 +2064,7 @@ function App() {
                           >
                             📍 Click to view on map →
                           </button>
-
                         </div>
-
                       </div>
                     )
                   )
@@ -2405,21 +2077,14 @@ function App() {
                   "All".
                 </p>
               )}
-
             </div>
-
           </div>
 
-          {/* =================================================
-              HOTELS
-          ================================================= */}
+          {/* HOTELS */}
 
           <div className="result-section">
-
             <div className="result-section-header">
-
               <div>
-
                 <p className="small-label">
                   STAY
                 </p>
@@ -2428,7 +2093,6 @@ function App() {
                   Recommended
                   Hotels
                 </h3>
-
               </div>
 
               <span className="result-count">
@@ -2437,114 +2101,186 @@ function App() {
                 }{" "}
                 affordable
               </span>
-
             </div>
 
             <div className="result-grid">
+              {trip
+                .recommendedHotels
+                ?.length > 0 ? (
+                trip.recommendedHotels.map(
+                  (hotel) => {
+                    const priceAvailable =
+                      hasPrice(
+                        hotel.price_per_night
+                      );
 
-              {affordableHotels.length >
-              0 ? (
-                affordableHotels.map(
-                  (hotel) => (
-                    <div
-                      className="result-card"
-                      key={
-                        hotel.id ||
-                        `${hotel.name}-${hotel.latitude}-${hotel.longitude}`
-                      }
-                    >
+                    const affordable =
+                      priceAvailable &&
+                      Number(
+                        hotel.price_per_night
+                      ) <=
+                        budgetPerNight;
 
-                      <div className="result-card-icon">
-                        🏨
-                      </div>
+                    return (
+                      <div
+                        className="result-card"
+                        key={getHotelKey(
+                          hotel
+                        )}
+                      >
+                        <div className="result-card-icon">
+                          🏨
+                        </div>
 
-                      <div>
+                        <div>
+                          <h4>
+                            {
+                              hotel.name
+                            }
+                          </h4>
 
-                        <h4>
-                          {
-                            hotel.name
-                          }
-                        </h4>
+                          {hotel.rating !=
+                            null &&
+                            hotel.rating !==
+                              "" && (
+                              <div className="hotel-rating">
+                                ⭐{" "}
+                                {
+                                  hotel.rating
+                                }
+                              </div>
+                            )}
 
-                        {hotel.rating !=
-                          null &&
-                          hotel.rating !==
-                            "" && (
-                            <div className="hotel-rating">
-                              ⭐{" "}
-                              {
-                                hotel.rating
-                              }
-                            </div>
+                          <p>
+                            Comfortable
+                            stay for
+                            your{" "}
+                            {
+                              trip.destination
+                            }{" "}
+                            trip.
+                          </p>
+
+                          {/* PRICE */}
+
+                          <strong
+                            style={{
+                              display:
+                                "block",
+                              marginTop:
+                                "5px",
+                              color:
+                                priceAvailable
+                                  ? undefined
+                                  : "#a33a3a",
+                            }}
+                          >
+                            {priceAvailable
+                              ? `${formatPrice(
+                                  hotel.price_per_night
+                                )} / night`
+                              : "Price not found"}
+                          </strong>
+
+                          {/* AFFORDABILITY */}
+
+                          {priceAvailable &&
+                            affordable && (
+                              <span
+                                style={{
+                                  display:
+                                    "inline-block",
+                                  marginTop:
+                                    "7px",
+                                  fontSize:
+                                    "12px",
+                                  color:
+                                    "#315c3b",
+                                }}
+                              >
+                                ✓ Within
+                                your
+                                budget
+                              </span>
+                            )}
+
+                          {!priceAvailable && (
+                            <span
+                              style={{
+                                display:
+                                  "block",
+                                marginTop:
+                                  "7px",
+                                fontSize:
+                                  "12px",
+                                color:
+                                  "#805b19",
+                              }}
+                            >
+                              ⚠️ Price
+                              information
+                              unavailable
+                            </span>
                           )}
 
-                        <p>
-                          Comfortable
-                          stay for
-                          your{" "}
-                          {
-                            trip.destination
-                          }{" "}
-                          trip.
-                        </p>
+                          {/* HOTEL MAP BUTTON */}
 
-                        <strong>
-                          ₹
-                          {Number(
-                            hotel.price_per_night ||
-                              0
-                          ).toLocaleString(
-                            "en-IN"
-                          )}{" "}
-                          / night
-                        </strong>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const mapSection =
+                                document.querySelector(
+                                  ".tourism-map-section"
+                                );
 
-                        {/* =================================
-                            HOTEL MAP BUTTON
-                        ================================= */}
+                              mapSection?.scrollIntoView(
+                                {
+                                  behavior:
+                                    "smooth",
+                                  block:
+                                    "center",
+                                }
+                              );
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            document
-                              .querySelector(
-                                ".tourism-map-section"
-                              )
-                              ?.scrollIntoView({
-                                behavior:
-                                  "smooth",
-                                block:
-                                  "center",
-                              });
-                          }}
-                          style={{
-                            marginTop:
-                              "10px",
-                            width:
-                              "100%",
-                            border:
-                              "none",
-                            borderRadius:
-                              "8px",
-                            padding:
-                              "9px 12px",
-                            background:
-                              "#8b4513",
-                            color:
-                              "white",
-                            cursor:
-                              "pointer",
-                            fontWeight:
-                              "600",
-                          }}
-                        >
-                          🏨 View hotel on map →
-                        </button>
-
+                              setTimeout(() => {
+                                window.dispatchEvent(
+                                  new CustomEvent(
+                                    "focusHotel",
+                                    {
+                                      detail:
+                                        hotel,
+                                    }
+                                  )
+                                );
+                              }, 500);
+                            }}
+                            style={{
+                              marginTop:
+                                "10px",
+                              width:
+                                "100%",
+                              border:
+                                "none",
+                              borderRadius:
+                                "8px",
+                              padding:
+                                "9px 12px",
+                              background:
+                                "#8b4513",
+                              color:
+                                "white",
+                              cursor:
+                                "pointer",
+                              fontWeight:
+                                "600",
+                            }}
+                          >
+                            🏨 View hotel on map →
+                          </button>
+                        </div>
                       </div>
-
-                    </div>
-                  )
+                    );
+                  }
                 )
               ) : (
                 <div
@@ -2554,9 +2290,7 @@ function App() {
                       "1 / -1",
                   }}
                 >
-                  ⚠️ No hotels found
-                  within your current
-                  budget.
+                  ⚠️ No hotels found.
 
                   <br />
 
@@ -2568,53 +2302,42 @@ function App() {
                       budgetPerNight
                     ).toLocaleString(
                       "en-IN"
-                    )}
-                    {" "}
+                    )}{" "}
                     per night.
                   </small>
                 </div>
               )}
-
             </div>
-
           </div>
 
-          {/* =================================================
-              DESTINATION INFO
-          ================================================= */}
+          {/* DESTINATION INFO */}
 
           <div className="destination-info">
-
             <div>
-
               <p className="small-label">
                 BEST TIME TO
                 VISIT
               </p>
 
               <h3>
-                {trip.bestTime}
+                {trip.bestTime ||
+                  "Information not available"}
               </h3>
-
             </div>
 
             <div>
-
               <p className="small-label">
                 LOCATION
               </p>
 
               <h3>
-                {trip.state}
+                {trip.state ||
+                  "Information not available"}
               </h3>
-
             </div>
-
           </div>
 
-          {/* =================================================
-              SMART MAP
-          ================================================= */}
+          {/* MAP */}
 
           <TourismMap
             places={
@@ -2630,7 +2353,6 @@ function App() {
                 ? trip.recommendedPlaces
                 : []
             }
-
             hotels={
               Array.isArray(
                 trip.recommendedHotels
@@ -2638,26 +2360,20 @@ function App() {
                 ? trip.recommendedHotels
                 : []
             }
-
             destination={
               trip.destination
             }
           />
-
         </section>
       )}
 
-      {/* =================================================
-          FEATURES
-      ================================================= */}
+      {/* FEATURES */}
 
       <section
         id="features"
         className="features-section"
       >
-
         <div className="section-heading">
-
           <p className="small-label">
             WHY SMARTTOURISM?
           </p>
@@ -2673,13 +2389,10 @@ function App() {
             experience your
             journey.
           </p>
-
         </div>
 
         <div className="feature-grid">
-
           <div className="feature-card">
-
             <div className="feature-icon">
               🤖
             </div>
@@ -2695,11 +2408,9 @@ function App() {
               on your
               interests.
             </p>
-
           </div>
 
           <div className="feature-card">
-
             <div className="feature-icon">
               💰
             </div>
@@ -2714,11 +2425,9 @@ function App() {
               your spending
               under control.
             </p>
-
           </div>
 
           <div className="feature-card">
-
             <div className="feature-icon">
               🗺️
             </div>
@@ -2733,11 +2442,9 @@ function App() {
               simple
               day-by-day plan.
             </p>
-
           </div>
 
           <div className="feature-card">
-
             <div className="feature-icon">
               🏨
             </div>
@@ -2752,24 +2459,17 @@ function App() {
               and local
               experiences.
             </p>
-
           </div>
-
         </div>
-
       </section>
 
-      {/* =================================================
-          ABOUT
-      ================================================= */}
+      {/* ABOUT */}
 
       <section
         id="about"
         className="about-section"
       >
-
         <div>
-
           <p className="small-label">
             BUILT FOR MODERN
             TOURISM
@@ -2779,7 +2479,6 @@ function App() {
             One smart platform
             for every journey.
           </h2>
-
         </div>
 
         <p>
@@ -2791,23 +2490,14 @@ function App() {
           experiences through
           intelligent technology.
         </p>
-
       </section>
 
-      {/* =================================================
-          FOOTER
-      ================================================= */}
+      {/* FOOTER */}
 
       <footer>
-
         <div className="logo">
-
-          <span>
-            ✦
-          </span>
-
+          <span>✦</span>
           SmartTourism
-
         </div>
 
         <p>
@@ -2815,9 +2505,7 @@ function App() {
           planning for smarter
           journeys.
         </p>
-
       </footer>
-
     </div>
   );
 }
