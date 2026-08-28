@@ -19,7 +19,7 @@ import "./App.css";
 const API_URL = "http://localhost:5000";
 
 /* =========================================================
-   LEAFLET DEFAULT MARKER
+   LEAFLET DEFAULT ICON
 ========================================================= */
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -60,6 +60,155 @@ const currentLocationIcon = L.divIcon({
 });
 
 /* =========================================================
+   TOURIST PLACE ICON
+========================================================= */
+
+const touristPlaceIcon = L.divIcon({
+  className: "tourist-place-icon",
+
+  html: `
+    <div style="
+      width:38px;
+      height:38px;
+      background:#17221d;
+      border:3px solid white;
+      border-radius:50% 50% 50% 0;
+      transform:rotate(-45deg);
+      box-shadow:0 3px 12px rgba(0,0,0,0.30);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    ">
+      <span style="
+        transform:rotate(45deg);
+        font-size:19px;
+      ">
+        🗺️
+      </span>
+    </div>
+  `,
+
+  iconSize: [38, 38],
+  iconAnchor: [19, 38],
+  popupAnchor: [0, -38],
+});
+
+/* =========================================================
+   SELECTED PLACE ICON
+========================================================= */
+
+const selectedPlaceIcon = L.divIcon({
+  className: "selected-place-icon",
+
+  html: `
+    <div style="
+      width:44px;
+      height:44px;
+      background:#d97706;
+      border:4px solid white;
+      border-radius:50% 50% 50% 0;
+      transform:rotate(-45deg);
+      box-shadow:0 4px 15px rgba(0,0,0,0.35);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    ">
+      <span style="
+        transform:rotate(45deg);
+        font-size:21px;
+      ">
+        📍
+      </span>
+    </div>
+  `,
+
+  iconSize: [44, 44],
+  iconAnchor: [22, 44],
+  popupAnchor: [0, -44],
+});
+
+/* =========================================================
+   NORMALIZE PLACE COORDINATES
+========================================================= */
+
+function getPlaceCoordinates(place) {
+  if (!place) {
+    return null;
+  }
+
+  const lat = Number(
+    place.latitude ??
+      place.lat ??
+      place.location?.latitude ??
+      place.location?.lat
+  );
+
+  const lng = Number(
+    place.longitude ??
+      place.lng ??
+      place.lon ??
+      place.location?.longitude ??
+      place.location?.lng ??
+      place.location?.lon
+  );
+
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng)
+  ) {
+    return null;
+  }
+
+  return {
+    latitude: lat,
+    longitude: lng,
+  };
+}
+
+/* =========================================================
+   NORMALIZE PLACE
+========================================================= */
+
+function normalizePlace(place, index = 0) {
+  const coordinates =
+    getPlaceCoordinates(place);
+
+  if (!coordinates) {
+    return null;
+  }
+
+  return {
+    ...place,
+
+    id:
+      place.id ??
+      `place-${index}-${coordinates.latitude}-${coordinates.longitude}`,
+
+    name:
+      place.name ||
+      "Tourist Place",
+
+    latitude:
+      coordinates.latitude,
+
+    longitude:
+      coordinates.longitude,
+
+    category:
+      place.category ||
+      place.type ||
+      "Tourist Attraction",
+
+    description:
+      place.description ||
+      "Explore this tourist attraction.",
+
+    estimated_cost:
+      Number(place.estimated_cost ?? 0),
+  };
+}
+
+/* =========================================================
    MAP VIEW CONTROLLER
 ========================================================= */
 
@@ -70,98 +219,86 @@ function MapViewController({
 }) {
   const map = useMap();
 
-  const initialFitDone = useRef(false);
+  const initialFitDone =
+    useRef(false);
 
   useEffect(() => {
     if (!map) return;
 
-    const points = [];
+    /* =========================================
+       SELECTED PLACE
+    ========================================= */
 
-    /* -----------------------------------------
-       ADD ALL PLACES
-    ----------------------------------------- */
+    if (selectedPlace) {
+      const coordinates =
+        getPlaceCoordinates(
+          selectedPlace
+        );
 
-    places.forEach((place) => {
-      const lat = Number(place.latitude);
-      const lng = Number(place.longitude);
+      if (coordinates) {
+        map.flyTo(
+          [
+            coordinates.latitude,
+            coordinates.longitude,
+          ],
+          15,
+          {
+            duration: 1.2,
+          }
+        );
 
-      if (
-        Number.isFinite(lat) &&
-        Number.isFinite(lng)
-      ) {
-        points.push([lat, lng]);
-      }
-    });
-
-    /* -----------------------------------------
-       ADD CURRENT LOCATION
-    ----------------------------------------- */
-
-    if (currentLocation) {
-      const lat = Number(currentLocation[0]);
-      const lng = Number(currentLocation[1]);
-
-      if (
-        Number.isFinite(lat) &&
-        Number.isFinite(lng)
-      ) {
-        points.push([lat, lng]);
+        return;
       }
     }
 
-    /* -----------------------------------------
-       FIRST MAP FIT
-    ----------------------------------------- */
+    /* =========================================
+       INITIAL FIT
+    ========================================= */
 
     if (
-      points.length > 0 &&
+      places.length > 0 &&
       !initialFitDone.current
     ) {
-      const bounds = L.latLngBounds(points);
+      const points = [];
 
-      map.fitBounds(bounds, {
-        padding: [50, 50],
-        maxZoom: 14,
+      places.forEach((place) => {
+        const coordinates =
+          getPlaceCoordinates(place);
+
+        if (coordinates) {
+          points.push([
+            coordinates.latitude,
+            coordinates.longitude,
+          ]);
+        }
       });
 
-      initialFitDone.current = true;
+      if (currentLocation) {
+        const lat =
+          Number(currentLocation[0]);
 
-      return;
-    }
+        const lng =
+          Number(currentLocation[1]);
 
-    /* -----------------------------------------
-       WHEN ROUTE PLACE SELECTED
-    ----------------------------------------- */
+        if (
+          Number.isFinite(lat) &&
+          Number.isFinite(lng)
+        ) {
+          points.push([lat, lng]);
+        }
+      }
 
-    if (
-      selectedPlace &&
-      currentLocation &&
-      selectedPlace.latitude != null &&
-      selectedPlace.longitude != null
-    ) {
-      const start = [
-        Number(currentLocation[0]),
-        Number(currentLocation[1]),
-      ];
-
-      const end = [
-        Number(selectedPlace.latitude),
-        Number(selectedPlace.longitude),
-      ];
-
-      if (
-        start.every(Number.isFinite) &&
-        end.every(Number.isFinite)
-      ) {
-        const bounds = L.latLngBounds([
-          start,
-          end,
-        ]);
+      if (points.length > 0) {
+        const bounds =
+          L.latLngBounds(points);
 
         map.fitBounds(bounds, {
-          padding: [80, 80],
-          maxZoom: 15,
+          padding: [50, 50],
+          maxZoom: 14,
         });
+
+        initialFitDone.current =
+          true;
       }
     }
   }, [
@@ -188,9 +325,9 @@ function RoutingControl({
     useRef(null);
 
   useEffect(() => {
-    /* -----------------------------------------
+    /* =========================================
        REMOVE OLD ROUTE
-    ----------------------------------------- */
+    ========================================= */
 
     if (routingControlRef.current) {
       try {
@@ -204,37 +341,41 @@ function RoutingControl({
         );
       }
 
-      routingControlRef.current = null;
+      routingControlRef.current =
+        null;
     }
 
-    /* -----------------------------------------
-       CHECK LOCATION + DESTINATION
-    ----------------------------------------- */
+    /* =========================================
+       VALIDATION
+    ========================================= */
 
     if (
       !currentLocation ||
-      !selectedPlace ||
-      selectedPlace.latitude == null ||
-      selectedPlace.longitude == null
+      !selectedPlace
     ) {
       return undefined;
     }
 
-    const startLat = Number(
-      currentLocation[0]
-    );
+    const coordinates =
+      getPlaceCoordinates(
+        selectedPlace
+      );
 
-    const startLng = Number(
-      currentLocation[1]
-    );
+    if (!coordinates) {
+      return undefined;
+    }
 
-    const endLat = Number(
-      selectedPlace.latitude
-    );
+    const startLat =
+      Number(currentLocation[0]);
 
-    const endLng = Number(
-      selectedPlace.longitude
-    );
+    const startLng =
+      Number(currentLocation[1]);
+
+    const endLat =
+      coordinates.latitude;
+
+    const endLng =
+      coordinates.longitude;
 
     if (
       !Number.isFinite(startLat) ||
@@ -249,19 +390,21 @@ function RoutingControl({
       return undefined;
     }
 
-    /* -----------------------------------------
-       CREATE ROUTING CONTROL
-    ----------------------------------------- */
+    /* =========================================
+       CREATE ROUTE
+    ========================================= */
 
-    const startPoint = L.latLng(
-      startLat,
-      startLng
-    );
+    const startPoint =
+      L.latLng(
+        startLat,
+        startLng
+      );
 
-    const endPoint = L.latLng(
-      endLat,
-      endLng
-    );
+    const endPoint =
+      L.latLng(
+        endLat,
+        endLng
+      );
 
     const routingControl =
       L.Routing.control({
@@ -270,10 +413,11 @@ function RoutingControl({
           endPoint,
         ],
 
-        router: L.Routing.osrmv1({
-          serviceUrl:
-            "https://router.project-osrm.org/route/v1",
-        }),
+        router:
+          L.Routing.osrmv1({
+            serviceUrl:
+              "https://router.project-osrm.org/route/v1",
+          }),
 
         lineOptions: {
           styles: [
@@ -311,9 +455,9 @@ function RoutingControl({
     routingControlRef.current =
       routingControl;
 
-    /* -----------------------------------------
+    /* =========================================
        ROUTE FOUND
-    ----------------------------------------- */
+    ========================================= */
 
     routingControl.on(
       "routesfound",
@@ -348,9 +492,9 @@ function RoutingControl({
       }
     );
 
-    /* -----------------------------------------
+    /* =========================================
        ROUTE ERROR
-    ----------------------------------------- */
+    ========================================= */
 
     routingControl.on(
       "routingerror",
@@ -362,9 +506,9 @@ function RoutingControl({
       }
     );
 
-    /* -----------------------------------------
+    /* =========================================
        CLEANUP
-    ----------------------------------------- */
+    ========================================= */
 
     return () => {
       if (routingControlRef.current) {
@@ -379,7 +523,8 @@ function RoutingControl({
           );
         }
 
-        routingControlRef.current = null;
+        routingControlRef.current =
+          null;
       }
     };
   }, [
@@ -398,12 +543,11 @@ function RoutingControl({
 function TourismMap({
   places = [],
   destination,
+  selectedPlace,
+  onPlaceSelect,
+  currentLocation,
+  setCurrentLocation,
 }) {
-  const [
-    currentLocation,
-    setCurrentLocation,
-  ] = useState(null);
-
   const [
     locationError,
     setLocationError,
@@ -413,11 +557,6 @@ function TourismMap({
     locating,
     setLocating,
   ] = useState(false);
-
-  const [
-    selectedPlace,
-    setSelectedPlace,
-  ] = useState(null);
 
   /* =======================================================
      GET CURRENT LOCATION
@@ -469,11 +608,15 @@ function TourismMap({
           setLocationError(
             "Location permission denied. Click the 🔒 icon near localhost:5173 and allow Location."
           );
-        } else if (error.code === 2) {
+        } else if (
+          error.code === 2
+        ) {
           setLocationError(
             "Your location could not be detected. Make sure location services are enabled."
           );
-        } else if (error.code === 3) {
+        } else if (
+          error.code === 3
+        ) {
           setLocationError(
             "Location request timed out. Click My Location again."
           );
@@ -512,10 +655,6 @@ function TourismMap({
       place
     );
 
-    /* -----------------------------------------
-       LOCATION NOT AVAILABLE
-    ----------------------------------------- */
-
     if (!currentLocation) {
       setLocationError(
         "Please allow location access first."
@@ -526,14 +665,10 @@ function TourismMap({
       return;
     }
 
-    /* -----------------------------------------
-       VALIDATE DESTINATION
-    ----------------------------------------- */
+    const coordinates =
+      getPlaceCoordinates(place);
 
-    if (
-      place.latitude == null ||
-      place.longitude == null
-    ) {
+    if (!coordinates) {
       setLocationError(
         "Route is not available because this place has no map coordinates."
       );
@@ -541,25 +676,15 @@ function TourismMap({
       return;
     }
 
-    /* -----------------------------------------
-       SET ROUTE DESTINATION
-    ----------------------------------------- */
-
-    setSelectedPlace({
+    onPlaceSelect({
       ...place,
 
-      latitude: Number(
-        place.latitude
-      ),
+      latitude:
+        coordinates.latitude,
 
-      longitude: Number(
-        place.longitude
-      ),
+      longitude:
+        coordinates.longitude,
     });
-
-    /* -----------------------------------------
-       SCROLL ROUTE PANEL
-    ----------------------------------------- */
 
     setTimeout(() => {
       document
@@ -574,74 +699,65 @@ function TourismMap({
   };
 
   /* =======================================================
-     CLEAR ROUTE
-  ======================================================= */
-
-  const clearRoute = () => {
-    setSelectedPlace(null);
-  };
-
-  /* =======================================================
      VALID PLACES
   ======================================================= */
 
   const mappedPlaces =
     Array.isArray(places)
-      ? places.filter((place) => {
-          const lat = Number(
-            place.latitude
-          );
-
-          const lng = Number(
-            place.longitude
-          );
-
-          return (
-            Number.isFinite(lat) &&
-            Number.isFinite(lng)
-          );
-        })
+      ? places
+          .map(
+            (place, index) =>
+              normalizePlace(
+                place,
+                index
+              )
+          )
+          .filter(Boolean)
       : [];
-
-  /* =======================================================
-     MAP CENTER
-  ======================================================= */
-
-  const defaultCenter = [
-    22.5726,
-    88.3639,
-  ];
-
-  const mapCenter =
-    defaultCenter;
 
   /* =======================================================
      DEBUG
   ======================================================= */
 
   console.log(
-    "TourismMap places:",
+    "TourismMap received places:",
     places
   );
 
   console.log(
-    "Mapped places:",
+    "TourismMap mapped places:",
     mappedPlaces
   );
 
   console.log(
-    "Current location:",
-    currentLocation
-  );
-
-  console.log(
-    "Selected place:",
+    "TourismMap selected place:",
     selectedPlace
   );
 
-  return (
-    <div className="tourism-map-section">
+  /* =======================================================
+     MAP CENTER
+  ======================================================= */
 
+  const defaultCenter = [
+    27.041,
+    88.2663,
+  ];
+
+  const mapCenter =
+    mappedPlaces.length > 0
+      ? [
+          mappedPlaces[0]
+            .latitude,
+          mappedPlaces[0]
+            .longitude,
+        ]
+      : defaultCenter;
+
+  return (
+    <div
+      className="tourism-map-section"
+      id="smart-map"
+    >
       {/* =================================================
           HEADER
       ================================================= */}
@@ -657,9 +773,7 @@ function TourismMap({
           flexWrap: "wrap",
         }}
       >
-
         <div>
-
           <p className="small-label">
             EXPLORE{" "}
             {destination?.toUpperCase()}
@@ -675,7 +789,6 @@ function TourismMap({
           >
             Explore Nearby Places
           </h3>
-
         </div>
 
         <button
@@ -700,7 +813,6 @@ function TourismMap({
             ? "Detecting..."
             : "📍 My Location"}
         </button>
-
       </div>
 
       {/* =================================================
@@ -750,51 +862,51 @@ function TourismMap({
       )}
 
       {/* =================================================
-          NO MAP PLACES
+          MAP PLACE COUNT
       ================================================= */}
 
-      {mappedPlaces.length === 0 && (
-        <div
-          style={{
-            marginBottom: "15px",
-            padding: "12px",
-            background: "#fff7e6",
-            borderRadius: "10px",
-            color: "#805b19",
-            fontSize: "13px",
-          }}
-        >
-          ⚠️ No mapped tourist places
-          were received from the
-          backend.
-
-          <br />
-
-          Make sure your places have
-          valid latitude and longitude.
-        </div>
-      )}
+      <div
+        style={{
+          marginBottom: "12px",
+          padding: "10px 14px",
+          background: "#f4f7f4",
+          borderRadius: "10px",
+          fontSize: "13px",
+          color: "#4f5d53",
+        }}
+      >
+        🗺️{" "}
+        <strong>
+          {mappedPlaces.length}
+        </strong>{" "}
+        tourist places available on
+        the map.
+      </div>
 
       {/* =================================================
           MAP
       ================================================= */}
 
-      <div className="map-wrapper">
-
+      <div
+        className="map-wrapper"
+        style={{
+          position: "relative",
+          zIndex: 1,
+        }}
+      >
         <MapContainer
           center={mapCenter}
-          zoom={13}
+          zoom={12}
           scrollWheelZoom={true}
           className="tourism-map"
         >
-
           <TileLayer
             attribution="&copy; OpenStreetMap contributors"
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
           {/* ============================================
-              MAP VIEW
+              MAP VIEW CONTROLLER
           ============================================ */}
 
           <MapViewController
@@ -820,11 +932,10 @@ function TourismMap({
                 currentLocationIcon
               }
             >
-
               <Popup>
-
                 <strong>
-                  📍 Your Current Location
+                  📍 Your Current
+                  Location
                 </strong>
 
                 <br />
@@ -844,54 +955,66 @@ function TourismMap({
                     6
                   )}
                 </small>
-
               </Popup>
-
             </Marker>
           )}
 
           {/* ============================================
-              ALL TOURIST PLACES
+              TOURIST PLACES
           ============================================ */}
 
           {mappedPlaces.map(
-            (place) => (
-              <Marker
-                key={
-                  place.id ||
-                  `${place.name}-${place.latitude}-${place.longitude}`
-                }
-                position={[
-                  Number(
-                    place.latitude
-                  ),
-                  Number(
-                    place.longitude
-                  ),
-                ]}
-              >
+            (place) => {
+              const isSelected =
+                selectedPlace &&
+                String(
+                  selectedPlace.id
+                ) ===
+                  String(place.id);
 
-                <Popup>
+              return (
+                <Marker
+                  key={place.id}
+                  position={[
+                    place.latitude,
+                    place.longitude,
+                  ]}
+                  icon={
+                    isSelected
+                      ? selectedPlaceIcon
+                      : touristPlaceIcon
+                  }
+                  eventHandlers={{
+                    click: () => {
+                      console.log(
+                        "Map place clicked:",
+                        place
+                      );
 
-                  <div
-                    style={{
-                      minWidth:
-                        "220px",
-                    }}
-                  >
-
-                    <strong
+                      onPlaceSelect(
+                        place
+                      );
+                    },
+                  }}
+                >
+                  <Popup>
+                    <div
                       style={{
-                        fontSize:
-                          "16px",
+                        minWidth:
+                          "220px",
                       }}
                     >
-                      {place.name}
-                    </strong>
+                      <strong
+                        style={{
+                          fontSize:
+                            "16px",
+                        }}
+                      >
+                        {place.name}
+                      </strong>
 
-                    <br />
+                      <br />
 
-                    {place.category && (
                       <span
                         style={{
                           color:
@@ -902,87 +1025,75 @@ function TourismMap({
                       >
                         {place.category}
                       </span>
-                    )}
 
-                    {place.description && (
-                      <>
-                        <br />
+                      {place.description && (
+                        <>
+                          <br />
 
-                        <small
-                          style={{
-                            display:
-                              "block",
-                            marginTop:
-                              "6px",
-                            lineHeight:
-                              "1.5",
-                          }}
-                        >
-                          {
-                            place.description
-                          }
-                        </small>
-                      </>
-                    )}
+                          <small
+                            style={{
+                              display:
+                                "block",
+                              marginTop:
+                                "6px",
+                              lineHeight:
+                                "1.5",
+                            }}
+                          >
+                            {
+                              place.description
+                            }
+                          </small>
+                        </>
+                      )}
 
-                    {place.estimated_cost !==
-                      undefined && (
-                      <>
-                        <br />
+                      <br />
 
-                        <small>
-                          💰 Estimated: ₹
-                          {Number(
-                            place.estimated_cost ||
-                              0
-                          ).toLocaleString(
-                            "en-IN"
-                          )}
-                        </small>
-                      </>
-                    )}
+                      <small>
+                        💰 Estimated: ₹
+                        {Number(
+                          place.estimated_cost ||
+                            0
+                        ).toLocaleString(
+                          "en-IN"
+                        )}
+                      </small>
 
-                    {/* =================================
-                        SHOW ROUTE
-                    ================================= */}
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleShowRoute(
-                          place
-                        )
-                      }
-                      style={{
-                        marginTop:
-                          "10px",
-                        width:
-                          "100%",
-                        border:
-                          "none",
-                        borderRadius:
-                          "8px",
-                        padding:
-                          "9px",
-                        background:
-                          "#17221d",
-                        color:
-                          "white",
-                        cursor:
-                          "pointer",
-                        fontWeight:
-                          "600",
-                      }}
-                    >
-                      🧭 Show Route
-                    </button>
-
-                  </div>
-
-                </Popup>
-
-              </Marker>
-            )
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleShowRoute(
+                            place
+                          )
+                        }
+                        style={{
+                          marginTop:
+                            "10px",
+                          width:
+                            "100%",
+                          border:
+                            "none",
+                          borderRadius:
+                            "8px",
+                          padding:
+                            "9px",
+                          background:
+                            "#17221d",
+                          color:
+                            "white",
+                          cursor:
+                            "pointer",
+                          fontWeight:
+                            "600",
+                        }}
+                      >
+                        🧭 Show Route
+                      </button>
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            }
           )}
 
           {/* ============================================
@@ -1000,9 +1111,7 @@ function TourismMap({
                 }
               />
             )}
-
         </MapContainer>
-
       </div>
 
       {/* =================================================
@@ -1023,7 +1132,6 @@ function TourismMap({
               "0 10px 30px rgba(0,0,0,0.06)",
           }}
         >
-
           <div
             style={{
               display: "flex",
@@ -1034,11 +1142,9 @@ function TourismMap({
               flexWrap: "wrap",
             }}
           >
-
             <div>
-
               <p className="small-label">
-                DIRECTIONS
+                SELECTED PLACE
               </p>
 
               <h3
@@ -1046,80 +1152,82 @@ function TourismMap({
                   fontFamily:
                     "Syne, sans-serif",
                   fontSize: "22px",
-                  marginBottom:
-                    "8px",
-                }}
-              >
-                📍 Current Location
-              </h3>
-
-              <p
-                style={{
-                  margin:
-                    "5px 0",
-                  color:
-                    "#68756d",
-                  fontSize:
-                    "20px",
-                }}
-              >
-                ↓
-              </p>
-
-              <h3
-                style={{
-                  fontFamily:
-                    "Syne, sans-serif",
-                  fontSize: "22px",
+                  margin: 0,
                 }}
               >
                 📍{" "}
                 {selectedPlace.name}
               </h3>
 
+              {selectedPlace.category && (
+                <p
+                  style={{
+                    color:
+                      "#68756d",
+                    margin:
+                      "6px 0 0",
+                  }}
+                >
+                  {
+                    selectedPlace.category
+                  }
+                </p>
+              )}
             </div>
 
             <button
               type="button"
-              onClick={
-                clearRoute
+              onClick={() =>
+                onPlaceSelect(null)
               }
               style={{
                 border: "none",
-                borderRadius:
-                  "9px",
+                borderRadius: "9px",
                 padding:
                   "9px 13px",
                 background:
                   "#fff0f0",
-                color:
-                  "#a33a3a",
-                cursor:
-                  "pointer",
-                fontWeight:
-                  "600",
+                color: "#a33a3a",
+                cursor: "pointer",
+                fontWeight: "600",
               }}
             >
-              ✕ Clear Route
+              ✕ Clear Selection
             </button>
-
           </div>
 
-          <p
-            style={{
-              marginTop: "15px",
-              color: "#68756d",
-              fontSize: "13px",
-            }}
-          >
-            🚗 Route calculated from
-            your current location to{" "}
-            <strong>
-              {selectedPlace.name}
-            </strong>
-            .
-          </p>
-
+          {currentLocation ? (
+            <p
+              style={{
+                marginTop: "15px",
+                color: "#68756d",
+                fontSize: "13px",
+              }}
+            >
+              🚗 You can now use
+              <strong>
+                {" "}
+                Show Route
+              </strong>{" "}
+              from this place's
+              map popup to calculate
+              directions from your
+              current location.
+            </p>
+          ) : (
+            <p
+              style={{
+                marginTop: "15px",
+                color: "#a33a3a",
+                fontSize: "13px",
+              }}
+            >
+              ⚠️ Allow location access
+              to calculate the route
+              from your current
+              location.
+            </p>
+          )}
         </div>
       )}
 
@@ -1138,7 +1246,6 @@ function TourismMap({
         {mappedPlaces.length}{" "}
         mapped places.
       </p>
-
     </div>
   );
 }
@@ -1172,6 +1279,16 @@ function App() {
   const [error, setError] =
     useState("");
 
+  const [
+    selectedPlace,
+    setSelectedPlace,
+  ] = useState(null);
+
+  const [
+    currentLocation,
+    setCurrentLocation,
+  ] = useState(null);
+
   const interests = [
     "Nature",
     "Adventure",
@@ -1183,14 +1300,64 @@ function App() {
   ];
 
   /* =======================================================
+     SELECT PLACE FROM CARD
+  ======================================================= */
+
+  const handlePlaceCardClick = (
+    place
+  ) => {
+    console.log(
+      "PLACE CARD CLICKED:",
+      place
+    );
+
+    const normalized =
+      normalizePlace(place);
+
+    if (!normalized) {
+      console.error(
+        "This place has no valid coordinates:",
+        place
+      );
+
+      return;
+    }
+
+    setSelectedPlace(
+      normalized
+    );
+
+    /* =========================================
+       SCROLL TO MAP
+    ========================================= */
+
+    setTimeout(() => {
+      const mapSection =
+        document.getElementById(
+          "smart-map"
+        );
+
+      if (mapSection) {
+        mapSection.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }
+    }, 100);
+  };
+
+  /* =======================================================
      GENERATE TRIP
   ======================================================= */
 
-  const handleGenerate = async (e) => {
+  const handleGenerate = async (
+    e
+  ) => {
     e.preventDefault();
 
     setError("");
     setTrip(null);
+    setSelectedPlace(null);
 
     if (!destination.trim()) {
       setError(
@@ -1213,6 +1380,23 @@ function App() {
 
     try {
       setLoading(true);
+
+      console.log(
+        "Sending trip request:",
+        {
+          destination:
+            destination.trim(),
+
+          days: Number(days),
+
+          budget: Number(budget),
+
+          travellers:
+            Number(travellers),
+
+          interest,
+        }
+      );
 
       const response =
         await fetch(
@@ -1243,8 +1427,18 @@ function App() {
           }
         );
 
+      console.log(
+        "Backend response status:",
+        response.status
+      );
+
       const data =
         await response.json();
+
+      console.log(
+        "FULL BACKEND RESPONSE:",
+        data
+      );
 
       if (!response.ok) {
         throw new Error(
@@ -1269,7 +1463,37 @@ function App() {
           ?.recommendedPlaces
       );
 
+      /* =========================================
+         DEBUG COUNTS
+      ========================================= */
+
+      console.log(
+        "ALL PLACES COUNT:",
+        Array.isArray(
+          data.trip?.allPlaces
+        )
+          ? data.trip.allPlaces
+              .length
+          : 0
+      );
+
+      console.log(
+        "RECOMMENDED COUNT:",
+        Array.isArray(
+          data.trip
+            ?.recommendedPlaces
+        )
+          ? data.trip
+              .recommendedPlaces
+              .length
+          : 0
+      );
+
       setTrip(data.trip);
+
+      /* =========================================
+         SCROLL RESULT
+      ========================================= */
 
       setTimeout(() => {
         document
@@ -1281,9 +1505,11 @@ function App() {
               "smooth",
           });
       }, 150);
-
     } catch (err) {
-      console.error(err);
+      console.error(
+        "Generate trip error:",
+        err
+      );
 
       setError(
         err.message ||
@@ -1314,6 +1540,22 @@ function App() {
     ) || [];
 
   /* =======================================================
+     ALL MAP PLACES
+  ======================================================= */
+
+  const mapPlaces =
+    Array.isArray(
+      trip?.allPlaces
+    ) &&
+    trip.allPlaces.length > 0
+      ? trip.allPlaces
+      : Array.isArray(
+          trip?.recommendedPlaces
+        )
+      ? trip.recommendedPlaces
+      : [];
+
+  /* =======================================================
      RETURN
   ======================================================= */
 
@@ -1325,14 +1567,12 @@ function App() {
       ================================================= */}
 
       <nav className="navbar">
-
         <div className="logo">
           <span>✦</span>
           SmartTourism
         </div>
 
         <div className="nav-links">
-
           <a href="#home">
             Home
           </a>
@@ -1344,7 +1584,6 @@ function App() {
           <a href="#about">
             About
           </a>
-
         </div>
 
         <button
@@ -1362,7 +1601,6 @@ function App() {
         >
           Plan a Trip
         </button>
-
       </nav>
 
       {/* =================================================
@@ -1373,9 +1611,7 @@ function App() {
         id="home"
         className="hero"
       >
-
         <div className="hero-content">
-
           <div className="badge">
             ✨ AI-Powered Travel
             Planning
@@ -1400,7 +1636,6 @@ function App() {
           </p>
 
           <div className="hero-stats">
-
             <div>
               <strong>
                 AI
@@ -1430,9 +1665,7 @@ function App() {
                 Travel Assistant
               </span>
             </div>
-
           </div>
-
         </div>
 
         {/* =================================================
@@ -1443,11 +1676,8 @@ function App() {
           className="planner-card"
           id="planner"
         >
-
           <div className="planner-header">
-
             <div>
-
               <p className="small-label">
                 PLAN YOUR JOURNEY
               </p>
@@ -1456,13 +1686,11 @@ function App() {
                 Tell us about
                 your trip
               </h2>
-
             </div>
 
             <div className="ai-icon">
               ✦
             </div>
-
           </div>
 
           <form
@@ -1470,18 +1698,16 @@ function App() {
               handleGenerate
             }
           >
-
             {/* DESTINATION */}
 
             <div className="form-group">
-
               <label>
                 📍 Destination
               </label>
 
               <input
                 type="text"
-                placeholder="e.g. Kolkata"
+                placeholder="e.g. Darjeeling"
                 value={
                   destination
                 }
@@ -1491,15 +1717,12 @@ function App() {
                   )
                 }
               />
-
             </div>
 
             {/* DAYS + TRAVELLERS */}
 
             <div className="form-row">
-
               <div className="form-group">
-
                 <label>
                   📅 Days
                 </label>
@@ -1512,7 +1735,6 @@ function App() {
                     )
                   }
                 >
-
                   <option value="1">
                     1 Day
                   </option>
@@ -1536,13 +1758,10 @@ function App() {
                   <option value="7">
                     7 Days
                   </option>
-
                 </select>
-
               </div>
 
               <div className="form-group">
-
                 <label>
                   👥 Travellers
                 </label>
@@ -1557,7 +1776,6 @@ function App() {
                     )
                   }
                 >
-
                   <option value="1">
                     1 Traveller
                   </option>
@@ -1577,17 +1795,13 @@ function App() {
                   <option value="5">
                     5 Travellers
                   </option>
-
                 </select>
-
               </div>
-
             </div>
 
             {/* BUDGET */}
 
             <div className="form-group">
-
               <label>
                 💰 Total Budget
               </label>
@@ -1603,19 +1817,16 @@ function App() {
                   )
                 }
               />
-
             </div>
 
             {/* INTEREST */}
 
             <div className="form-group">
-
               <label>
                 ❤️ What do you enjoy?
               </label>
 
               <div className="interest-grid">
-
                 {interests.map(
                   (item) => (
                     <button
@@ -1637,9 +1848,7 @@ function App() {
                     </button>
                   )
                 )}
-
               </div>
-
             </div>
 
             {/* ERROR */}
@@ -1669,11 +1878,8 @@ function App() {
                 </span>
               )}
             </button>
-
           </form>
-
         </div>
-
       </main>
 
       {/* =================================================
@@ -1685,11 +1891,9 @@ function App() {
           id="trip-result"
           className="trip-result"
         >
-
           {/* RESULT HEADER */}
 
           <div className="result-heading">
-
             <p className="small-label">
               YOUR PERSONALIZED
               TRIP
@@ -1702,13 +1906,11 @@ function App() {
             <p>
               {trip.description}
             </p>
-
           </div>
 
           {/* SUMMARY */}
 
           <div className="trip-summary">
-
             <div>
               <strong>
                 {trip.days}
@@ -1753,7 +1955,6 @@ function App() {
                 Interest
               </span>
             </div>
-
           </div>
 
           {/* =================================================
@@ -1761,11 +1962,8 @@ function App() {
           ================================================= */}
 
           <div className="result-section">
-
             <div className="result-section-header">
-
               <div>
-
                 <p className="small-label">
                   DISCOVER
                 </p>
@@ -1774,7 +1972,6 @@ function App() {
                   Recommended
                   Places
                 </h3>
-
               </div>
 
               <span className="result-count">
@@ -1785,66 +1982,94 @@ function App() {
                 }{" "}
                 places
               </span>
-
             </div>
 
             <div className="result-grid">
-
               {trip
                 .recommendedPlaces
                 ?.length > 0 ? (
-                trip
-                  .recommendedPlaces
-                  .map(
-                    (place) => (
-                      <div
-                        className="result-card"
-                        key={
-                          place.id ||
-                          place.name
-                        }
-                      >
+                trip.recommendedPlaces.map(
+                  (
+                    place,
+                    index
+                  ) => (
+                    <div
+                      className="result-card"
+                      key={
+                        place.id ||
+                        `${place.name}-${index}`
+                      }
 
-                        <div className="result-card-icon">
-                          🗺️
-                        </div>
+                      /* ==================================
+                         CLICK CARD → MAP
+                      ================================== */
 
-                        <div>
+                      onClick={() =>
+                        handlePlaceCardClick(
+                          place
+                        )
+                      }
 
-                          <h4>
-                            {
-                              place.name
-                            }
-                          </h4>
+                      style={{
+                        cursor:
+                          "pointer",
+                      }}
 
-                          <span className="category">
-                            {
-                              place.category
-                            }
-                          </span>
-
-                          <p>
-                            {
-                              place.description
-                            }
-                          </p>
-
-                          <strong>
-                            Estimated
-                            cost: ₹
-                            {Number(
-                              place.estimated_cost ||
-                                0
-                            ).toLocaleString(
-                              "en-IN"
-                            )}
-                          </strong>
-
-                        </div>
-
+                      title="Click to view this place on the map"
+                    >
+                      <div className="result-card-icon">
+                        🗺️
                       </div>
-                    )
+
+                      <div>
+                        <h4>
+                          {
+                            place.name
+                          }
+                        </h4>
+
+                        <span className="category">
+                          {
+                            place.category
+                          }
+                        </span>
+
+                        <p>
+                          {
+                            place.description
+                          }
+                        </p>
+
+                        <strong>
+                          Estimated
+                          cost: ₹
+                          {Number(
+                            place.estimated_cost ||
+                              0
+                          ).toLocaleString(
+                            "en-IN"
+                          )}
+                        </strong>
+
+                        <div
+                          style={{
+                            marginTop:
+                              "10px",
+                            fontSize:
+                              "12px",
+                            color:
+                              "#4f6b56",
+                            fontWeight:
+                              "600",
+                          }}
+                        >
+                          📍 Click to
+                          view on map →
+                        </div>
+                      </div>
+                    </div>
                   )
+                )
               ) : (
                 <p className="empty-message">
                   No places found
@@ -1854,9 +2079,7 @@ function App() {
                   "All".
                 </p>
               )}
-
             </div>
-
           </div>
 
           {/* =================================================
@@ -1864,11 +2087,8 @@ function App() {
           ================================================= */}
 
           <div className="result-section">
-
             <div className="result-section-header">
-
               <div>
-
                 <p className="small-label">
                   STAY
                 </p>
@@ -1877,7 +2097,6 @@ function App() {
                   Recommended
                   Hotels
                 </h3>
-
               </div>
 
               <span className="result-count">
@@ -1886,29 +2105,28 @@ function App() {
                 }{" "}
                 affordable
               </span>
-
             </div>
 
             <div className="result-grid">
-
               {affordableHotels.length >
               0 ? (
                 affordableHotels.map(
-                  (hotel) => (
+                  (
+                    hotel,
+                    index
+                  ) => (
                     <div
                       className="result-card"
                       key={
                         hotel.id ||
-                        hotel.name
+                        `${hotel.name}-${index}`
                       }
                     >
-
                       <div className="result-card-icon">
                         🏨
                       </div>
 
                       <div>
-
                         <h4>
                           {
                             hotel.name
@@ -1942,9 +2160,7 @@ function App() {
                           )}{" "}
                           / night
                         </strong>
-
                       </div>
-
                     </div>
                   )
                 )
@@ -1976,9 +2192,7 @@ function App() {
                   </small>
                 </div>
               )}
-
             </div>
-
           </div>
 
           {/* =================================================
@@ -1986,9 +2200,7 @@ function App() {
           ================================================= */}
 
           <div className="destination-info">
-
             <div>
-
               <p className="small-label">
                 BEST TIME TO
                 VISIT
@@ -1997,11 +2209,9 @@ function App() {
               <h3>
                 {trip.bestTime}
               </h3>
-
             </div>
 
             <div>
-
               <p className="small-label">
                 LOCATION
               </p>
@@ -2009,38 +2219,31 @@ function App() {
               <h3>
                 {trip.state}
               </h3>
-
             </div>
-
           </div>
 
           {/* =================================================
               SMART MAP
-
-              IMPORTANT:
-              ALL PLACES FIRST
-              recommendedPlaces FALLBACK
           ================================================= */}
 
           <TourismMap
-            places={
-              Array.isArray(
-                trip.allPlaces
-              ) &&
-              trip.allPlaces.length >
-                0
-                ? trip.allPlaces
-                : Array.isArray(
-                    trip.recommendedPlaces
-                  )
-                ? trip.recommendedPlaces
-                : []
-            }
+            places={mapPlaces}
             destination={
               trip.destination
             }
+            selectedPlace={
+              selectedPlace
+            }
+            onPlaceSelect={
+              setSelectedPlace
+            }
+            currentLocation={
+              currentLocation
+            }
+            setCurrentLocation={
+              setCurrentLocation
+            }
           />
-
         </section>
       )}
 
@@ -2052,9 +2255,7 @@ function App() {
         id="features"
         className="features-section"
       >
-
         <div className="section-heading">
-
           <p className="small-label">
             WHY SMARTTOURISM?
           </p>
@@ -2070,13 +2271,10 @@ function App() {
             experience your
             journey.
           </p>
-
         </div>
 
         <div className="feature-grid">
-
           <div className="feature-card">
-
             <div className="feature-icon">
               🤖
             </div>
@@ -2092,11 +2290,9 @@ function App() {
               on your
               interests.
             </p>
-
           </div>
 
           <div className="feature-card">
-
             <div className="feature-icon">
               💰
             </div>
@@ -2111,11 +2307,9 @@ function App() {
               your spending
               under control.
             </p>
-
           </div>
 
           <div className="feature-card">
-
             <div className="feature-icon">
               🗺️
             </div>
@@ -2130,11 +2324,9 @@ function App() {
               simple
               day-by-day plan.
             </p>
-
           </div>
 
           <div className="feature-card">
-
             <div className="feature-icon">
               🏨
             </div>
@@ -2149,11 +2341,8 @@ function App() {
               and local
               experiences.
             </p>
-
           </div>
-
         </div>
-
       </section>
 
       {/* =================================================
@@ -2164,9 +2353,7 @@ function App() {
         id="about"
         className="about-section"
       >
-
         <div>
-
           <p className="small-label">
             BUILT FOR MODERN
             TOURISM
@@ -2176,7 +2363,6 @@ function App() {
             One smart platform
             for every journey.
           </h2>
-
         </div>
 
         <p>
@@ -2188,7 +2374,6 @@ function App() {
           experiences through
           intelligent technology.
         </p>
-
       </section>
 
       {/* =================================================
@@ -2196,15 +2381,9 @@ function App() {
       ================================================= */}
 
       <footer>
-
         <div className="logo">
-
-          <span>
-            ✦
-          </span>
-
+          <span>✦</span>
           SmartTourism
-
         </div>
 
         <p>
@@ -2212,9 +2391,7 @@ function App() {
           planning for smarter
           journeys.
         </p>
-
       </footer>
-
     </div>
   );
 }
