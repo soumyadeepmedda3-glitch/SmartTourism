@@ -491,6 +491,7 @@ function TourismMap({
   places = [],
   hotels = [],
   destination,
+  onLocationError,
 }) {
   const [
     currentLocation,
@@ -519,12 +520,24 @@ function TourismMap({
   const hotelMarkerRefs = useRef({});
 
   /* =======================================================
+     ERROR HANDLER
+  ======================================================= */
+
+  const showLocationError = (message) => {
+    setLocationError(message);
+
+    if (onLocationError) {
+      onLocationError(message);
+    }
+  };
+
+  /* =======================================================
      GET CURRENT LOCATION
   ======================================================= */
 
   const getCurrentLocation = () => {
     if (!navigator.geolocation) {
-      setLocationError(
+      showLocationError(
         "Your browser does not support location services."
       );
 
@@ -554,6 +567,7 @@ function TourismMap({
         ]);
 
         setLocating(false);
+        setLocationError("");
       },
 
       (error) => {
@@ -564,23 +578,21 @@ function TourismMap({
 
         setLocating(false);
 
+        let message =
+          "Unable to detect your current location.";
+
         if (error.code === 1) {
-          setLocationError(
-            "Location permission denied. Click the 🔒 icon near localhost:5173 and allow Location."
-          );
+          message =
+            "Location permission denied. Click the 🔒 icon near localhost:5173 and allow Location.";
         } else if (error.code === 2) {
-          setLocationError(
-            "Your location could not be detected. Make sure location services are enabled."
-          );
+          message =
+            "Your location could not be detected. Make sure location services are enabled.";
         } else if (error.code === 3) {
-          setLocationError(
-            "Location request timed out. Click My Location again."
-          );
-        } else {
-          setLocationError(
-            "Unable to detect your current location."
-          );
+          message =
+            "Location request timed out. Click My Location again.";
         }
+
+        showLocationError(message);
       },
 
       {
@@ -609,7 +621,7 @@ function TourismMap({
       !isValidNumber(place.latitude) ||
       !isValidNumber(place.longitude)
     ) {
-      setLocationError(
+      showLocationError(
         "This place does not have valid map coordinates."
       );
 
@@ -667,7 +679,7 @@ function TourismMap({
       !isValidNumber(hotel.latitude) ||
       !isValidNumber(hotel.longitude)
     ) {
-      setLocationError(
+      showLocationError(
         "This hotel does not have valid map coordinates."
       );
 
@@ -716,12 +728,64 @@ function TourismMap({
   };
 
   /* =======================================================
+     GLOBAL HOTEL EVENT
+  ======================================================= */
+
+  useEffect(() => {
+    const handleFocusHotel = (event) => {
+      const hotel = event.detail;
+
+      if (!hotel) return;
+
+      focusHotelOnMap(hotel);
+    };
+
+    window.addEventListener(
+      "focusHotel",
+      handleFocusHotel
+    );
+
+    return () => {
+      window.removeEventListener(
+        "focusHotel",
+        handleFocusHotel
+      );
+    };
+  }, []);
+
+  /* =======================================================
+     GLOBAL PLACE EVENT
+  ======================================================= */
+
+  useEffect(() => {
+    const handleFocusPlace = (event) => {
+      const place = event.detail;
+
+      if (!place) return;
+
+      focusPlaceOnMap(place);
+    };
+
+    window.addEventListener(
+      "focusPlace",
+      handleFocusPlace
+    );
+
+    return () => {
+      window.removeEventListener(
+        "focusPlace",
+        handleFocusPlace
+      );
+    };
+  }, []);
+
+  /* =======================================================
      SHOW ROUTE
   ======================================================= */
 
   const handleShowRoute = (place) => {
     if (!currentLocation) {
-      setLocationError(
+      showLocationError(
         "Please allow location access first."
       );
 
@@ -734,7 +798,7 @@ function TourismMap({
       !isValidNumber(place.latitude) ||
       !isValidNumber(place.longitude)
     ) {
-      setLocationError(
+      showLocationError(
         "Route is not available because this place has no valid map coordinates."
       );
 
@@ -1237,6 +1301,19 @@ function TourismMap({
                         ) &&
                           "/ night"}
                       </small>
+
+                      {hotel.address && (
+                        <>
+                          <br />
+
+                          <small>
+                            📍{" "}
+                            {
+                              hotel.address
+                            }
+                          </small>
+                        </>
+                      )}
                     </div>
                   </Popup>
                 </Marker>
@@ -1488,8 +1565,16 @@ function App() {
           }
         );
 
-      const data =
-        await response.json();
+      let data;
+
+      try {
+        data =
+          await response.json();
+      } catch {
+        throw new Error(
+          "Backend returned an invalid response. Make sure server.js is running on port 5000."
+        );
+      }
 
       if (!response.ok) {
         throw new Error(
@@ -1560,6 +1645,62 @@ function App() {
         );
       }
     ) || [];
+
+  /* =======================================================
+     FOCUS PLACE FROM CARD
+  ======================================================= */
+
+  const handlePlaceCardMapClick = (
+    place
+  ) => {
+    document
+      .querySelector(
+        ".tourism-map-section"
+      )
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+
+    setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent(
+          "focusPlace",
+          {
+            detail: place,
+          }
+        )
+      );
+    }, 500);
+  };
+
+  /* =======================================================
+     FOCUS HOTEL FROM CARD
+  ======================================================= */
+
+  const handleHotelCardMapClick = (
+    hotel
+  ) => {
+    document
+      .querySelector(
+        ".tourism-map-section"
+      )
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+
+    setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent(
+          "focusHotel",
+          {
+            detail: hotel,
+          }
+        )
+      );
+    }, 500);
+  };
 
   /* =======================================================
      RETURN
@@ -2030,16 +2171,9 @@ function App() {
                           <button
                             type="button"
                             onClick={() =>
-                              document
-                                .querySelector(
-                                  ".tourism-map-section"
-                                )
-                                ?.scrollIntoView({
-                                  behavior:
-                                    "smooth",
-                                  block:
-                                    "center",
-                                })
+                              handlePlaceCardMapClick(
+                                place
+                              )
                             }
                             style={{
                               marginTop:
@@ -2062,7 +2196,7 @@ function App() {
                                 "600",
                             }}
                           >
-                            📍 Click to view on map →
+                            📍 View this place on map →
                           </button>
                         </div>
                       </div>
@@ -2151,6 +2285,15 @@ function App() {
                               </div>
                             )}
 
+                          {hotel.address && (
+                            <p>
+                              📍{" "}
+                              {
+                                hotel.address
+                              }
+                            </p>
+                          )}
+
                           <p>
                             Comfortable
                             stay for
@@ -2227,33 +2370,11 @@ function App() {
 
                           <button
                             type="button"
-                            onClick={() => {
-                              const mapSection =
-                                document.querySelector(
-                                  ".tourism-map-section"
-                                );
-
-                              mapSection?.scrollIntoView(
-                                {
-                                  behavior:
-                                    "smooth",
-                                  block:
-                                    "center",
-                                }
-                              );
-
-                              setTimeout(() => {
-                                window.dispatchEvent(
-                                  new CustomEvent(
-                                    "focusHotel",
-                                    {
-                                      detail:
-                                        hotel,
-                                    }
-                                  )
-                                );
-                              }, 500);
-                            }}
+                            onClick={() =>
+                              handleHotelCardMapClick(
+                                hotel
+                              )
+                            }
                             style={{
                               marginTop:
                                 "10px",
