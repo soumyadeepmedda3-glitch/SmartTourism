@@ -6,6 +6,10 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+/* =========================================================
+   LIMITS
+========================================================= */
+
 const MAX_RECOMMENDED_PLACES = 12;
 const MAX_MAP_PLACES = 40;
 const MAX_RECOMMENDED_HOTELS = 8;
@@ -38,6 +42,7 @@ async function connectDatabase() {
       password: process.env.DB_PASSWORD || "",
       database: process.env.DB_NAME || "smarttourism",
       port: Number(process.env.DB_PORT) || 3306,
+
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
@@ -51,6 +56,7 @@ async function connectDatabase() {
   } catch (error) {
     console.error("⚠️ MySQL connection failed:");
     console.error(error.message);
+
     db = null;
   }
 }
@@ -87,9 +93,9 @@ async function fetchWithTimeout(
 ========================================================= */
 
 function sleep(ms) {
-  return new Promise((resolve) =>
-    setTimeout(resolve, ms)
-  );
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 /* =========================================================
@@ -111,6 +117,26 @@ function normalizeName(name) {
     .toLowerCase()
     .replace(/[^\w\s]/g, "")
     .replace(/\s+/g, " ");
+}
+
+/* =========================================================
+   SAFE NUMBER
+========================================================= */
+
+function safeNumber(value) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return null;
+  }
+
+  const number = Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : null;
 }
 
 /* =========================================================
@@ -202,20 +228,13 @@ const OVERPASS_SERVERS = [
 ];
 
 /* =========================================================
-   BUILD TOURISM QUERY
+   TOURISM QUERY
 ========================================================= */
 
 function buildTourismQuery(
   latitude,
   longitude
 ) {
-  /*
-    15 KM instead of 30 KM.
-
-    This makes results faster and keeps
-    recommendations relevant to destination.
-  */
-
   const radius = 15000;
 
   return `
@@ -246,20 +265,13 @@ out center tags;
 }
 
 /* =========================================================
-   BUILD HOTEL QUERY
+   HOTEL QUERY
 ========================================================= */
 
 function buildHotelQuery(
   latitude,
   longitude
 ) {
-  /*
-    Search hotels around destination.
-
-    20 KM radius gives enough choices
-    for destinations such as Digha.
-  */
-
   const radius = 20000;
 
   return `
@@ -314,7 +326,7 @@ function getOSMCoordinates(element) {
 }
 
 /* =========================================================
-   CATEGORY
+   PLACE CATEGORY
 ========================================================= */
 
 function getPlaceCategory(tags) {
@@ -373,7 +385,49 @@ function getPlaceCategory(tags) {
 }
 
 /* =========================================================
-   CONVERT TOURIST PLACES
+   GET PLACE COST FROM OSM
+========================================================= */
+
+function getOSMPlaceCost(tags) {
+  /*
+    We only use a price if OSM explicitly
+    provides one.
+
+    We NEVER use 0 as a fake price.
+  */
+
+  const possiblePrices = [
+    tags.fee,
+    tags.price,
+    tags["charge:amount"],
+  ];
+
+  for (const value of possiblePrices) {
+    if (!value) {
+      continue;
+    }
+
+    const match =
+      String(value).match(
+        /[\d,]+(?:\.\d+)?/
+      );
+
+    if (match) {
+      const price = Number(
+        match[0].replace(/,/g, "")
+      );
+
+      if (Number.isFinite(price)) {
+        return price;
+      }
+    }
+  }
+
+  return null;
+}
+
+/* =========================================================
+   CONVERT OSM PLACES
 ========================================================= */
 
 function convertOSMPlaces(elements) {
@@ -407,14 +461,20 @@ function convertOSMPlaces(elements) {
       tags.description ||
       `${category} near the selected destination.`;
 
-    places.push({
-      id: `osm-${element.type}-${element.id}`,
+    const estimatedCost =
+      getOSMPlaceCost(tags);
 
-      name: cleanText(name),
+    places.push({
+      id:
+        `osm-${element.type}-${element.id}`,
+
+      name:
+        cleanText(name),
 
       category,
 
-      description: cleanText(description),
+      description:
+        cleanText(description),
 
       latitude:
         coordinates.latitude,
@@ -422,14 +482,20 @@ function convertOSMPlaces(elements) {
       longitude:
         coordinates.longitude,
 
-      estimated_cost: 0,
+      /*
+        null means price is not known.
+        NEVER show fake ₹0.
+      */
+      estimated_cost:
+        estimatedCost,
 
       state:
         cleanText(
           tags["addr:state"]
         ),
 
-      source: "OpenStreetMap",
+      source:
+        "OpenStreetMap",
     });
   }
 
@@ -439,7 +505,43 @@ function convertOSMPlaces(elements) {
 }
 
 /* =========================================================
-   CONVERT HOTELS
+   GET HOTEL PRICE
+========================================================= */
+
+function getOSMHotelPrice(tags) {
+  const possiblePrices = [
+    tags.price,
+    tags["price:night"],
+    tags["charge:night"],
+    tags["charge"],
+  ];
+
+  for (const value of possiblePrices) {
+    if (!value) {
+      continue;
+    }
+
+    const match =
+      String(value).match(
+        /[\d,]+(?:\.\d+)?/
+      );
+
+    if (match) {
+      const price = Number(
+        match[0].replace(/,/g, "")
+      );
+
+      if (Number.isFinite(price)) {
+        return price;
+      }
+    }
+  }
+
+  return null;
+}
+
+/* =========================================================
+   CONVERT OSM HOTELS
 ========================================================= */
 
 function convertOSMHotels(elements) {
@@ -467,48 +569,42 @@ function convertOSMHotels(elements) {
 
     let category = "Hotel";
 
-    if (tags.tourism === "guest_house") {
+    if (
+      tags.tourism ===
+      "guest_house"
+    ) {
       category = "Guest House";
-    } else if (tags.tourism === "hostel") {
+    } else if (
+      tags.tourism ===
+      "hostel"
+    ) {
       category = "Hostel";
-    } else if (tags.tourism === "motel") {
+    } else if (
+      tags.tourism ===
+      "motel"
+    ) {
       category = "Motel";
-    } else if (tags.tourism === "apartment") {
+    } else if (
+      tags.tourism ===
+      "apartment"
+    ) {
       category = "Apartment";
     }
 
-    /*
-      OSM normally does not provide reliable
-      current room prices.
+    const price =
+      getOSMHotelPrice(tags);
 
-      So we DO NOT invent a price here.
-
-      price_per_night = null means:
-      "price needs confirmation"
-    */
-
-    let price = null;
-
-    if (tags["price"]) {
-      const numberMatch =
-        String(tags["price"]).match(
-          /[\d,]+/
-        );
-
-      if (numberMatch) {
-        price = Number(
-          numberMatch[0].replace(
-            /,/g,
-            ""
-          )
-        );
-      }
-    }
+    const rating =
+      tags.stars
+        ? Number(tags.stars)
+        : null;
 
     hotels.push({
-      id: `osm-hotel-${element.type}-${element.id}`,
+      id:
+        `osm-hotel-${element.type}-${element.id}`,
 
-      name: cleanText(name),
+      name:
+        cleanText(name),
 
       category,
 
@@ -518,22 +614,28 @@ function convertOSMHotels(elements) {
       longitude:
         coordinates.longitude,
 
+      /*
+        null = current price unavailable
+      */
       price_per_night:
-        price,
+        Number.isFinite(price)
+          ? price
+          : null,
 
       rating:
-        tags.stars
-          ? Number(tags.stars)
+        Number.isFinite(rating)
+          ? rating
           : null,
 
       address:
         cleanText(
           tags["addr:street"] ||
-            tags["addr:city"] ||
-            ""
+          tags["addr:city"] ||
+          ""
         ),
 
-      source: "OpenStreetMap",
+      source:
+        "OpenStreetMap",
     });
   }
 
@@ -606,9 +708,7 @@ function removeDuplicateHotels(
    OVERPASS REQUEST
 ========================================================= */
 
-async function queryOverpass(
-  query
-) {
+async function queryOverpass(query) {
   for (const server of OVERPASS_SERVERS) {
     try {
       console.log(
@@ -634,9 +734,7 @@ async function queryOverpass(
 
             body:
               "data=" +
-              encodeURIComponent(
-                query
-              ),
+              encodeURIComponent(query),
           },
           14000
         );
@@ -750,10 +848,12 @@ function calculateDistanceKm(
     Math.sin(dLat / 2) *
       Math.sin(dLat / 2) +
     Math.cos(
-      (lat1 * Math.PI) / 180
+      (lat1 * Math.PI) /
+        180
     ) *
       Math.cos(
-        (lat2 * Math.PI) / 180
+        (lat2 * Math.PI) /
+          180
       ) *
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
@@ -803,7 +903,6 @@ const INTEREST_KEYWORDS = {
     "cafe",
     "market",
     "street",
-    "food",
   ],
 
   Culture: [
@@ -850,10 +949,14 @@ function scorePlace(
   destinationLocation
 ) {
   const name =
-    cleanText(place.name).toLowerCase();
+    cleanText(
+      place.name
+    ).toLowerCase();
 
   const category =
-    cleanText(place.category).toLowerCase();
+    cleanText(
+      place.category
+    ).toLowerCase();
 
   const description =
     cleanText(
@@ -873,9 +976,9 @@ function scorePlace(
 
   let score = 0;
 
-  /*
-    Closer places get higher score.
-  */
+  /* =======================================================
+     DISTANCE
+  ======================================================= */
 
   if (distance <= 2) {
     score += 40;
@@ -889,9 +992,9 @@ function scorePlace(
     score += 5;
   }
 
-  /*
-    Interest matching.
-  */
+  /* =======================================================
+     INTEREST MATCHING
+  ======================================================= */
 
   const keywords =
     INTEREST_KEYWORDS[
@@ -908,9 +1011,9 @@ function scorePlace(
     }
   }
 
-  /*
-    Category-specific bonus.
-  */
+  /* =======================================================
+     CATEGORY BONUS
+  ======================================================= */
 
   if (
     interest === "Nature" &&
@@ -982,8 +1085,10 @@ function rankPlaces(
 
       return {
         ...place,
+
         recommendationScore:
           result.score,
+
         distanceKm:
           Number(
             result.distance.toFixed(2)
@@ -1054,11 +1159,6 @@ async function fallbackTouristSearch(
       );
     }
 
-    /*
-      Nominatim asks clients to avoid
-      sending requests too quickly.
-    */
-
     await sleep(1100);
   }
 
@@ -1108,7 +1208,12 @@ async function fallbackTouristSearch(
 
       longitude,
 
-      estimated_cost: 0,
+      /*
+        Unknown price.
+        Do NOT use 0.
+      */
+      estimated_cost:
+        null,
 
       state:
         item.address?.state ||
@@ -1125,7 +1230,7 @@ async function fallbackTouristSearch(
 }
 
 /* =========================================================
-   GET DATABASE PLACES
+   DATABASE PLACES
 ========================================================= */
 
 async function getDatabasePlaces() {
@@ -1139,7 +1244,34 @@ async function getDatabasePlaces() {
         "SELECT * FROM places ORDER BY id ASC"
       );
 
-    return rows || [];
+    return (rows || []).map(
+      (place) => ({
+        ...place,
+
+        latitude:
+          safeNumber(
+            place.latitude
+          ),
+
+        longitude:
+          safeNumber(
+            place.longitude
+          ),
+
+        /*
+          Convert database 0 to null
+          because 0 was previously being
+          used as an unknown price.
+        */
+
+        estimated_cost:
+          Number(place.estimated_cost) > 0
+            ? Number(
+                place.estimated_cost
+              )
+            : null,
+      })
+    );
   } catch (error) {
     console.log(
       "⚠️ Database places unavailable:",
@@ -1151,7 +1283,7 @@ async function getDatabasePlaces() {
 }
 
 /* =========================================================
-   GET DATABASE HOTELS
+   DATABASE HOTELS
 ========================================================= */
 
 async function getDatabaseHotels() {
@@ -1162,10 +1294,58 @@ async function getDatabaseHotels() {
   try {
     const [rows] =
       await db.query(
-        "SELECT * FROM hotels ORDER BY price_per_night ASC"
+        "SELECT * FROM hotels ORDER BY id ASC"
       );
 
-    return rows || [];
+    return (rows || []).map(
+      (hotel) => {
+        const price =
+          Number(
+            hotel.price_per_night
+          );
+
+        const rating =
+          Number(
+            hotel.rating
+          );
+
+        return {
+          ...hotel,
+
+          latitude:
+            safeNumber(
+              hotel.latitude
+            ),
+
+          longitude:
+            safeNumber(
+              hotel.longitude
+            ),
+
+          /*
+            0 means unknown in the old
+            database structure.
+            Convert it to null.
+          */
+
+          price_per_night:
+            Number.isFinite(price) &&
+            price > 0
+              ? price
+              : null,
+
+          rating:
+            Number.isFinite(rating) &&
+            rating > 0
+              ? rating
+              : null,
+
+          source:
+            hotel.source ||
+            "MySQL",
+        };
+      }
+    );
   } catch (error) {
     console.log(
       "⚠️ Database hotels unavailable:",
@@ -1186,18 +1366,24 @@ function scoreHotel(
   budgetPerNight
 ) {
   const price =
-    Number(
+    safeNumber(
       hotel.price_per_night
     );
 
   const rating =
-    Number(hotel.rating);
+    safeNumber(
+      hotel.rating
+    );
 
   const latitude =
-    Number(hotel.latitude);
+    safeNumber(
+      hotel.latitude
+    );
 
   const longitude =
-    Number(hotel.longitude);
+    safeNumber(
+      hotel.longitude
+    );
 
   let distance = null;
 
@@ -1216,21 +1402,15 @@ function scoreHotel(
 
   let score = 0;
 
-  /*
-    Price must be known and within budget
-    for a strong recommendation.
-  */
+  /* =======================================================
+     PRICE
+  ======================================================= */
 
   if (
     Number.isFinite(price) &&
     price <= budgetPerNight
   ) {
     score += 50;
-
-    /*
-      Cheaper than budget gets some bonus,
-      but not enough to always beat quality.
-    */
 
     const remaining =
       budgetPerNight - price;
@@ -1247,21 +1427,22 @@ function scoreHotel(
     }
   }
 
-  /*
-    Rating.
-  */
+  /* =======================================================
+     RATING
+  ======================================================= */
 
-  if (Number.isFinite(rating)) {
-    score +=
-      Math.min(
-        25,
-        rating * 5
-      );
+  if (
+    Number.isFinite(rating)
+  ) {
+    score += Math.min(
+      25,
+      rating * 5
+    );
   }
 
-  /*
-    Distance.
-  */
+  /* =======================================================
+     DISTANCE
+  ======================================================= */
 
   if (
     Number.isFinite(distance)
@@ -1276,8 +1457,8 @@ function scoreHotel(
   }
 
   /*
-    Unknown price should NOT be ranked
-    above confirmed budget hotels.
+    Unknown price gets a penalty,
+    but it is NOT converted to ₹0.
   */
 
   if (!Number.isFinite(price)) {
@@ -1320,25 +1501,20 @@ function recommendHotels(
               result.distance
             )
               ? Number(
-                  result.distance.toFixed(
-                    2
-                  )
+                  result.distance.toFixed(2)
                 )
               : null,
         };
       })
       .filter((hotel) => {
         const price =
-          Number(
+          safeNumber(
             hotel.price_per_night
           );
 
-        /*
-          Only confirmed prices inside budget.
-        */
-
         return (
           Number.isFinite(price) &&
+          price > 0 &&
           price <=
             budgetPerNight
         );
@@ -1353,6 +1529,76 @@ function recommendHotels(
     0,
     MAX_RECOMMENDED_HOTELS
   );
+}
+
+/* =========================================================
+   UNKNOWN PRICE HOTELS
+========================================================= */
+
+function getNearbyUnknownPriceHotels(
+  hotels,
+  destinationLocation
+) {
+  return hotels
+    .map((hotel) => {
+      const price =
+        safeNumber(
+          hotel.price_per_night
+        );
+
+      const latitude =
+        safeNumber(
+          hotel.latitude
+        );
+
+      const longitude =
+        safeNumber(
+          hotel.longitude
+        );
+
+      if (
+        Number.isFinite(price)
+      ) {
+        return null;
+      }
+
+      if (
+        !Number.isFinite(latitude) ||
+        !Number.isFinite(longitude)
+      ) {
+        return null;
+      }
+
+      const distance =
+        calculateDistanceKm(
+          destinationLocation.latitude,
+          destinationLocation.longitude,
+          latitude,
+          longitude
+        );
+
+      return {
+        ...hotel,
+
+        distanceKm:
+          Number(
+            distance.toFixed(2)
+          ),
+
+        recommendationScore:
+          0,
+      };
+    })
+    .filter(Boolean)
+    .sort(
+      (a, b) =>
+        a.distanceKm -
+        b.distanceKm
+    )
+    .slice(
+      0,
+      MAX_RECOMMENDED_HOTELS
+    );
 }
 
 /* =========================================================
@@ -1390,10 +1636,21 @@ app.get(
 
     res.json({
       success: true,
+
       backend: true,
-      mysql: mysqlConnected,
-      internetPlaces: true,
-      automaticRecommendations: true,
+
+      mysql:
+        mysqlConnected,
+
+      internetPlaces:
+        true,
+
+      automaticRecommendations:
+        true,
+
+      smartRanking:
+        true,
+
       message:
         "SmartTourism backend is working",
     });
@@ -1514,7 +1771,9 @@ app.post(
       }
 
       const cleanDestination =
-        cleanText(destination);
+        cleanText(
+          destination
+        );
 
       const selectedInterest =
         INTEREST_KEYWORDS[
@@ -1524,38 +1783,46 @@ app.post(
           : "All";
 
       console.log("");
+
       console.log(
         "======================================"
       );
+
       console.log(
         "🌍 NEW SMART TOURISM REQUEST"
       );
+
       console.log(
         "Destination:",
         cleanDestination
       );
+
       console.log(
         "Days:",
         numberOfDays
       );
+
       console.log(
         "Budget:",
         totalBudget
       );
+
       console.log(
         "Travellers:",
         numberOfTravellers
       );
+
       console.log(
         "Interest:",
         selectedInterest
       );
+
       console.log(
         "======================================"
       );
 
       /* ===================================================
-         1. DESTINATION GEOCODING
+         1. GEOCODE DESTINATION
       =================================================== */
 
       const destinationLocation =
@@ -1566,6 +1833,7 @@ app.post(
       if (!destinationLocation) {
         return res.status(404).json({
           success: false,
+
           message:
             `Could not find destination "${cleanDestination}". Try a valid city or tourist destination name.`,
         });
@@ -1583,7 +1851,7 @@ app.post(
       );
 
       /* ===================================================
-         3. INTERNET / OSM PLACES
+         3. INTERNET PLACES
       =================================================== */
 
       console.log(
@@ -1614,7 +1882,7 @@ app.post(
       }
 
       /* ===================================================
-         5. MERGE DATABASE + INTERNET
+         5. MERGE PLACES
       =================================================== */
 
       const combinedPlaces = [
@@ -1677,48 +1945,17 @@ app.post(
           destinationLocation
         );
 
-      /*
-        MAP:
-
-        Keep maximum 40 relevant places.
-        This prevents 100 markers from
-        slowing the browser.
-      */
-
       const allPlaces =
         rankedPlaces.slice(
           0,
           MAX_MAP_PLACES
         );
 
-      /*
-        RECOMMENDATIONS:
-
-        Only best 12 places.
-      */
-
-      let recommendedPlaces =
+      const recommendedPlaces =
         rankedPlaces.slice(
           0,
           MAX_RECOMMENDED_PLACES
         );
-
-      /*
-        If selected interest doesn't have
-        strong matches, we still provide
-        useful destination places instead
-        of showing zero.
-      */
-
-      if (
-        recommendedPlaces.length === 0
-      ) {
-        recommendedPlaces =
-          rankedPlaces.slice(
-            0,
-            MAX_RECOMMENDED_PLACES
-          );
-      }
 
       console.log(
         `📌 Map places: ${allPlaces.length}`
@@ -1767,16 +2004,13 @@ app.post(
           combinedHotels
         );
 
-      /*
-        Hotel budget calculation.
+      console.log(
+        `🏨 Total unique hotels: ${uniqueHotels.length}`
+      );
 
-        We reserve part of total budget
-        for hotel.
-
-        Approximation:
-        40% of total trip budget
-        divided by number of days.
-      */
+      /* ===================================================
+         12. HOTEL BUDGET
+      =================================================== */
 
       const hotelTotalBudget =
         totalBudget * 0.4;
@@ -1785,14 +2019,13 @@ app.post(
         hotelTotalBudget /
         numberOfDays;
 
-      /*
-        If 40% gives an extremely small
-        amount, use 60% as upper fallback.
-      */
-
       const fallbackHotelBudget =
-        totalBudget * 0.6 /
+        (totalBudget * 0.6) /
         numberOfDays;
+
+      /* ===================================================
+         13. RECOMMEND HOTELS
+      =================================================== */
 
       let recommendedHotels =
         recommendHotels(
@@ -1801,10 +2034,9 @@ app.post(
           hotelBudgetPerNight
         );
 
-      /*
-        If there are no hotels in 40%
-        budget, use 60% as fallback.
-      */
+      /* ===================================================
+         14. FALLBACK HOTEL BUDGET
+      =================================================== */
 
       if (
         recommendedHotels.length === 0
@@ -1817,12 +2049,28 @@ app.post(
           );
       }
 
+      /*
+        If no hotel has confirmed price,
+        show nearby hotels as "Price on request"
+        instead of showing ₹0.
+      */
+
+      if (
+        recommendedHotels.length === 0
+      ) {
+        recommendedHotels =
+          getNearbyUnknownPriceHotels(
+            uniqueHotels,
+            destinationLocation
+          );
+      }
+
       console.log(
         `⭐ Recommended hotels: ${recommendedHotels.length}`
       );
 
       /* ===================================================
-         12. STATE
+         15. STATE
       =================================================== */
 
       const state =
@@ -1831,7 +2079,7 @@ app.post(
         "India";
 
       /* ===================================================
-         13. DESCRIPTION
+         16. DESCRIPTION
       =================================================== */
 
       const description =
@@ -1844,7 +2092,7 @@ app.post(
         )} budget.`;
 
       /* ===================================================
-         14. FINAL TRIP
+         17. FINAL TRIP
       =================================================== */
 
       const trip = {
@@ -1889,14 +2137,28 @@ app.post(
             hotelBudgetPerNight
           ),
 
+        fallbackHotelBudgetPerNight:
+          Math.round(
+            fallbackHotelBudget
+          ),
+
         dataSource:
           "OpenStreetMap + MySQL",
 
-        aiUsed: false,
+        /*
+          This version uses smart
+          rule-based recommendation,
+          not an external AI model.
+        */
+        aiUsed:
+          false,
+
+        recommendationEngine:
+          "Smart rule-based ranking",
       };
 
       /* ===================================================
-         RESPONSE
+         18. LOG
       =================================================== */
 
       console.log(
@@ -1926,6 +2188,10 @@ app.post(
       console.log(
         "======================================"
       );
+
+      /* ===================================================
+         19. RESPONSE
+      =================================================== */
 
       return res.json({
         success: true,
@@ -1984,6 +2250,7 @@ async function startServer() {
     PORT,
     () => {
       console.log("");
+
       console.log(
         "======================================"
       );
@@ -2009,11 +2276,19 @@ async function startServer() {
       );
 
       console.log(
+        "💰 Fake ₹0 prices: DISABLED"
+      );
+
+      console.log(
         "🗺️ Maximum map places: 40"
       );
 
       console.log(
         "⭐ Maximum recommended places: 12"
+      );
+
+      console.log(
+        "🏨 Maximum recommended hotels: 8"
       );
 
       console.log(
@@ -2026,3 +2301,4 @@ async function startServer() {
 }
 
 startServer();
+
