@@ -1494,6 +1494,79 @@ function App() {
   const [error, setError] =
     useState("");
 
+  /* =======================================================
+     ANIMATED PREMIUM CURSOR
+  ======================================================= */
+
+  useEffect(() => {
+    const cursorDot = document.querySelector(".cursor-dot");
+    const cursorRing = document.querySelector(".cursor-ring");
+
+    if (!cursorDot || !cursorRing) return;
+
+    let mouseX = window.innerWidth / 2;
+    let mouseY = window.innerHeight / 2;
+    let ringX = mouseX;
+    let ringY = mouseY;
+    let animationFrame;
+
+    const moveCursor = (event) => {
+      mouseX = event.clientX;
+      mouseY = event.clientY;
+
+      cursorDot.style.left = `${mouseX}px`;
+      cursorDot.style.top = `${mouseY}px`;
+    };
+
+    const handlePointerOver = (event) => {
+      const target = event.target.closest(
+        "a, button, input, select, textarea, .result-card, .feature-card"
+      );
+
+      if (target) {
+        cursorRing.classList.add("cursor-hover");
+        cursorDot.classList.add("cursor-dot-hover");
+      }
+    };
+
+    const handlePointerOut = (event) => {
+      const from = event.target.closest(
+        "a, button, input, select, textarea, .result-card, .feature-card"
+      );
+      const to = event.relatedTarget?.closest?.(
+        "a, button, input, select, textarea, .result-card, .feature-card"
+      );
+
+      if (from && !to) {
+        cursorRing.classList.remove("cursor-hover");
+        cursorDot.classList.remove("cursor-dot-hover");
+      }
+    };
+
+    const animateCursor = () => {
+      ringX += (mouseX - ringX) * 0.14;
+      ringY += (mouseY - ringY) * 0.14;
+
+      cursorRing.style.left = `${ringX}px`;
+      cursorRing.style.top = `${ringY}px`;
+
+      animationFrame = requestAnimationFrame(animateCursor);
+    };
+
+    document.addEventListener("mousemove", moveCursor);
+    document.addEventListener("mouseover", handlePointerOver);
+    document.addEventListener("mouseout", handlePointerOut);
+
+    animateCursor();
+
+    return () => {
+      document.removeEventListener("mousemove", moveCursor);
+      document.removeEventListener("mouseover", handlePointerOver);
+      document.removeEventListener("mouseout", handlePointerOut);
+      cancelAnimationFrame(animationFrame);
+    };
+  }, []);
+
   const interests = [
     "Nature",
     "Adventure",
@@ -1707,9 +1780,111 @@ function App() {
   ======================================================= */
 
   return (
-    <div className="app">
+    <>
+      <style>{`
+        html,
+        body,
+        #root {
+          cursor: none;
+        }
 
-      {/* NAVBAR */}
+        .cursor-dot {
+          position: fixed;
+          width: 8px;
+          height: 8px;
+          left: 0;
+          top: 0;
+          background: #17221d;
+          border-radius: 50%;
+          pointer-events: none;
+          z-index: 99999;
+          transform: translate(-50%, -50%);
+          transition:
+            width 0.2s ease,
+            height 0.2s ease,
+            background 0.2s ease,
+            box-shadow 0.2s ease;
+        }
+
+        .cursor-ring {
+          position: fixed;
+          width: 38px;
+          height: 38px;
+          left: 0;
+          top: 0;
+          border: 1.5px solid #17221d;
+          border-radius: 50%;
+          pointer-events: none;
+          z-index: 99998;
+          transform: translate(-50%, -50%);
+          transition:
+            width 0.25s ease,
+            height 0.25s ease,
+            border-color 0.25s ease,
+            background 0.25s ease,
+            box-shadow 0.25s ease;
+        }
+
+        .cursor-ring::after {
+          content: "";
+          position: absolute;
+          inset: -8px;
+          border: 1px solid rgba(23, 34, 29, 0.12);
+          border-radius: 50%;
+          animation: smartCursorPulse 2s infinite;
+        }
+
+        .cursor-ring.cursor-hover {
+          width: 58px;
+          height: 58px;
+          border-color: #8b4513;
+          background: rgba(139, 69, 19, 0.08);
+          box-shadow:
+            0 0 22px rgba(139, 69, 19, 0.18),
+            inset 0 0 10px rgba(139, 69, 19, 0.08);
+        }
+
+        .cursor-dot.cursor-dot-hover {
+          width: 12px;
+          height: 12px;
+          background: #8b4513;
+          box-shadow: 0 0 12px rgba(139, 69, 19, 0.35);
+        }
+
+        @keyframes smartCursorPulse {
+          0% {
+            transform: scale(0.8);
+            opacity: 0.75;
+          }
+          50% {
+            transform: scale(1.15);
+            opacity: 0.15;
+          }
+          100% {
+            transform: scale(0.8);
+            opacity: 0.75;
+          }
+        }
+
+        @media (hover: none), (pointer: coarse) {
+          html,
+          body,
+          #root {
+            cursor: auto;
+          }
+
+          .cursor-dot,
+          .cursor-ring {
+            display: none;
+          }
+        }
+      `}</style>
+
+      <div className="app">
+        <div className="cursor-dot" aria-hidden="true"></div>
+        <div className="cursor-ring" aria-hidden="true"></div>
+
+        {/* NAVBAR */}
 
       <nav className="navbar">
         <div className="logo">
@@ -2627,7 +2802,8 @@ function App() {
           journeys.
         </p>
       </footer>
-    </div>
+      </div>
+    </>
   );
 }
 
